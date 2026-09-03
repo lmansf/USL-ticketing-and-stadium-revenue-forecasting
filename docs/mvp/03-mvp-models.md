@@ -18,11 +18,16 @@ BASE_FEATURES   = ["day_of_week", "month", "is_weekend", "is_midweek",
                    "last_home_gate", "home_gate_ma3", "opponent_club_id"]
 PROREL_FEATURES = ["rank_before", "opponent_rank_before", "rank_gap"]
 
-MODELS = {
+MODEL_FEATURES = {
     "baseline": BASE_FEATURES,
     "prorel":   BASE_FEATURES + PROREL_FEATURES,
 }
 ```
+
+This is `usl/features/definitions.py`. Note the name: `MODELS` in
+`usl/transform/runner.py` means something else entirely - the SQL models, the
+tables materialised in order. Two different senses of the word, so the code keeps
+them apart.
 
 Same dataframe, two column selections. No second mart, no second query. If the two
 models read from different tables, any difference between them could be a difference in

@@ -12,8 +12,9 @@ from usl.scrape.parse import add_match_id
 
 def test_match_id_is_stable_across_reparses(tiny_season: pd.DataFrame) -> None:
     """The same input must produce the same ids. Without this, nothing upserts."""
-    a = add_match_id(tiny_season.rename(columns={"home_club_id": "home_raw", "away_club_id": "away_raw"}))
-    b = add_match_id(tiny_season.rename(columns={"home_club_id": "home_raw", "away_club_id": "away_raw"}))
+    renames = {"home_club_id": "home_raw", "away_club_id": "away_raw"}
+    a = add_match_id(tiny_season.rename(columns=renames))
+    b = add_match_id(tiny_season.rename(columns=renames))
     assert list(a["match_id"]) == list(b["match_id"])
 
 
@@ -24,9 +25,8 @@ def test_match_id_is_unique_within_a_season(tiny_season: pd.DataFrame) -> None:
     wrong, and the symptom downstream is an upsert quietly overwriting a real
     match with a different one.
     """
-    df = add_match_id(
-        tiny_season.rename(columns={"home_club_id": "home_raw", "away_club_id": "away_raw"})
-    )
+    renames = {"home_club_id": "home_raw", "away_club_id": "away_raw"}
+    df = add_match_id(tiny_season.rename(columns=renames))
     assert df["match_id"].is_unique
 
 

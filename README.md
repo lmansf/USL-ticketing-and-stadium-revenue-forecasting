@@ -147,11 +147,20 @@ installs only the seven packages that track uses.
 Verify the install:
 
 ```
-make test          # or: python -m pytest
+make lint          # passes on a fresh clone
+make typecheck     # passes on a fresh clone
+make test          # partly red on a fresh clone, by design
 ```
 
-The test suite starts red. That is the point - the stubs under `usl/` are yours to
-implement, and the tests describe what correct looks like. See [tests/README.md](tests/README.md).
+On a fresh clone, lint and typecheck are green and the test suite is not: it collects
+46 tests, of which some pass (the ones checking the feature definitions and the SQL
+layer's wiring, which need no implementation), some fail with `NotImplementedError`,
+and the rest skip with a TODO naming what to build.
+
+That is the point - the stubs under `usl/` are yours to implement, and the tests
+describe what correct looks like. `make check` runs all three and therefore fails
+until you have implemented enough to turn it green. See
+[tests/README.md](tests/README.md).
 
 ---
 
@@ -280,4 +289,4 @@ Weather and Dagster slot in after step 10, as phase two.
 
 ## License
 
-MIT. See `pyproject.toml`.
+MIT. See [LICENSE](LICENSE).

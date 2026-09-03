@@ -9,8 +9,6 @@ import duckdb
 import pandas as pd
 import pytest
 
-from usl.transform.checks import all_clubs_mapped, row_count_preserved
-
 
 def test_unmapped_club_is_detected_and_named(con: duckdb.DuckDBPyConnection) -> None:
     """The check must name the exact unmapped string.
@@ -18,7 +16,7 @@ def test_unmapped_club_is_detected_and_named(con: duckdb.DuckDBPyConnection) -> 
     Fixing an unmapped club should be a paste into club_aliases.csv, not an
     investigation. This is what makes demo scenario D3 work.
     """
-    pytest.skip("TODO: build stg_matches with one unmapped club and assert on the name")
+    pytest.skip("TODO: exercise usl.transform.checks.all_clubs_mapped")
 
 
 def test_all_mapped_passes(con: duckdb.DuckDBPyConnection, club_aliases: pd.DataFrame) -> None:
@@ -33,7 +31,7 @@ def test_row_count_catches_what_null_check_does_not(con: duckdb.DuckDBPyConnecti
     signal. A mapping that collides two distinct clubs passes all_clubs_mapped
     cleanly and is still wrong.
     """
-    pytest.skip("TODO")
+    pytest.skip("TODO: exercise usl.transform.checks.row_count_preserved")
 
 
 def test_normalization_does_not_collide_distinct_clubs() -> None:

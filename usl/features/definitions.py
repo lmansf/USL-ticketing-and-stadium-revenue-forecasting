@@ -12,10 +12,10 @@ docs/phases/06-features.md#the-honesty-note.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 
-class Evidence(str, Enum):
+class Evidence(StrEnum):
     """How much weight a feature's finding can carry.
 
     MEASURED: a real finding on real data.

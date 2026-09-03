@@ -109,6 +109,12 @@ The stronger version is a `make check` that runs lint, typecheck, and tests, and
 in the README saying a fresh clone should pass it. Someone evaluating the repo will run
 exactly one command before deciding whether to keep reading. Make sure that command
 works.
+
+Note this is the one point where the scaffold's own README stops applying. While you
+are learning, the suite starts red by design - the stubs are the exercises. By the time
+you are delivering, they are implemented and it should be green, so update that section
+of the README rather than shipping a repo that tells a reviewer its tests are meant to
+fail.
 </details>
 
 ---
@@ -116,7 +122,8 @@ works.
 ## Checklist before sending
 
 - [ ] Fresh clone runs the setup instructions to a working backfill
-- [ ] `make check` passes on that fresh clone
+- [ ] `make check` passes on that fresh clone (green now, not red-by-design)
+- [ ] The README's "the test suite starts red" note is gone, since it no longer is
 - [ ] Screenshots in the README are current, not from an earlier version
 - [ ] The validated-versus-instrumented section is in the README, not only in the video
 - [ ] Every pro-rel view carries its exploratory label

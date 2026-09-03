@@ -65,19 +65,26 @@ club and an away club. What shape do you need before a window function can help 
 Unpivot to one row per club per match, then use a window function.
 
 ```sql
--- one row per club per match
+-- one row per club per match. No conference here - see the note below.
 WITH club_matches AS (
-    SELECT season, date, conference, home_club_id AS club_id,
+    SELECT season, date, home_club_id AS club_id,
            CASE WHEN home_goals > away_goals THEN 3
                 WHEN home_goals = away_goals THEN 1 ELSE 0 END AS points,
            home_goals AS gf, away_goals AS ga
     FROM stg_matches WHERE home_goals IS NOT NULL
     UNION ALL
-    SELECT season, date, conference, away_club_id,
+    SELECT season, date, away_club_id,
            CASE WHEN away_goals > home_goals THEN 3
                 WHEN away_goals = home_goals THEN 1 ELSE 0 END,
            away_goals, home_goals
     FROM stg_matches WHERE home_goals IS NOT NULL
+),
+-- conference is an attribute of the club-season, so it joins per club
+with_conference AS (
+    SELECT m.*, c.conference
+    FROM club_matches m
+    JOIN stg_clubs c
+      ON c.club_id = m.club_id AND c.season = m.season
 ),
 -- cumulative totals BEFORE each match
 running AS (
@@ -86,7 +93,7 @@ running AS (
            SUM(gf - ga) OVER w AS gd_before,
            SUM(gf)     OVER w AS gf_before,
            COUNT(*)    OVER w AS played_before
-    FROM club_matches
+    FROM with_conference
     WINDOW w AS (
         PARTITION BY season, club_id
         ORDER BY date
@@ -107,11 +114,16 @@ is the whole exercise. Everything else is bookkeeping.
 `COALESCE` the first match of each season to zeros - the window returns null there,
 and a null rank propagates into your features.
 
-Note the conference appears in two places and they mean different things. In
-`club_matches` it is an attribute of the club-season, carried through the unpivot. In
-the final `RANK()` it is a partition key. Getting the first one from the *match* rather
-than the club is a common slip: a cross-conference fixture has one conference in the
-column and it is wrong for one of the two clubs.
+Note where the conference comes from. It is an attribute of the **club-season**, so it
+joins from `stg_clubs` on `(club_id, season)` after the unpivot. Taking it off the
+match row instead is the common slip, and it is silent: an interconference fixture
+carries one conference value, so whichever club is not in it gets ranked in the wrong
+table. That is also why `stg_matches` has no `conference` column - there is no correct
+value to put in it.
+
+The join is an inner join on purpose. A club-season missing from `stg_clubs` should
+drop out loudly at the row-count check rather than get a null conference and form a
+silent third conference of its own under the final `RANK()`.
 </details>
 
 ---
@@ -139,12 +151,12 @@ just the ones playing:
 -- cross join every club-season against every match date in that season,
 -- carry the last-known cumulative totals forward, then rank the full field
 WITH date_grid AS (
-    SELECT DISTINCT season, conference, date FROM club_matches
+    SELECT DISTINCT season, conference, date FROM with_conference
 ),
 club_grid AS (
     SELECT g.season, g.conference, g.date, c.club_id
     FROM date_grid g
-    JOIN (SELECT DISTINCT season, conference, club_id FROM club_matches) c
+    JOIN (SELECT DISTINCT season, conference, club_id FROM with_conference) c
       ON c.season = g.season AND c.conference = g.conference
 )
 -- then ASOF JOIN each club_grid row to its most recent running total

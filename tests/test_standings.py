@@ -55,9 +55,11 @@ def test_final_standings_match_hand_computed_table(
     """Final table from tiny_season, worked out on paper.
 
     After six matches: club_a has 7 points (W, W, D), club_b has 4 (L, D, W),
-    club_c has 2 (D, D, D), club_d has 1 (D, L, L). Verify against the fixture
-    before trusting this - the point of a hand-checkable fixture is that you
-    check it by hand.
+    club_c has 3 (D, D, D), club_d has 1 (D, L, L). Goal differences are +4, -1,
+    0, and -3. The full table is in the tiny_season docstring.
+
+    Work it out from the fixture rows yourself before trusting these numbers -
+    the point of a hand-checkable fixture is that you check it by hand.
     """
     pytest.skip("TODO")
 
