@@ -1,0 +1,33 @@
+# MVP track dependencies - the seven packages docs/mvp/ actually uses.
+#
+#   pip install -r requirements-mvp.txt
+#
+# Everything between DuckDB and Tableau is Python. Nothing here listens on a
+# port, needs an API key, or authenticates against anything. The two pieces of
+# infrastructure are the DuckDB file on disk and Tableau Public.
+#
+# Move to requirements.txt when you start the full track - it adds nothing you
+# have to unlearn, only things the MVP does not reach for yet.
+
+# Scrape. lxml is pandas.read_html's parser, not a direct import of ours.
+requests>=2.31
+lxml>=5.0
+
+# Store and transform. The SQL layer runs inside DuckDB; Python only reads the
+# .sql file and hands it over.
+duckdb>=1.0
+pandas>=2.2
+
+# Model. The one genuinely heavy install in the project - xgboost ships a
+# compiled wheel. Unavoidable: the two-model comparison is the headline question.
+xgboost>=2.0
+scikit-learn>=1.4
+numpy>=1.26
+
+# Not needed for the MVP, and deliberately absent:
+#   dagster        phase two - the MVP uses Windows Task Scheduler
+#   pantab         only for Hyper extracts; the MVP writes CSV
+#   beautifulsoup4 pandas.read_html with lxml covers the parse
+#   pyarrow        no Arrow interchange in the MVP path
+#   pydantic       config.py is module-level constants, not a settings model
+#   python-dotenv  nothing in the MVP needs a secret or an API key

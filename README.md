@@ -80,6 +80,25 @@ Everything runs on one machine against a single DuckDB file. Phase one is schedu
 by a plain weekly task on Tuesdays. Dagster and weather features are
 [phase two](#phase-two-deferred).
 
+### The stack
+
+Two pieces of infrastructure - a DuckDB file on disk and Tableau - and Python
+between them. Nothing listens on a port, nothing needs an API key, nothing
+authenticates.
+
+| | |
+|---|---|
+| Scrape | `requests`, parsed with `pandas` (`lxml` as the HTML parser) |
+| Store | DuckDB. One file, single writer |
+| Transform | SQL, executed inside DuckDB. Python reads the `.sql` file and hands it over |
+| Model | `xgboost`, with `scikit-learn` for the error metrics |
+| Export | `pandas.to_csv`, or Hyper via the optional `pantab` |
+| Visualise | Tableau - live via the DuckDB JDBC connector, or on the CSV extracts |
+| Schedule | Windows Task Scheduler. Outside Python, and the one place a failure will not produce a traceback |
+
+`xgboost` is the only heavy install; it ships a compiled wheel. Dagster, the
+weather API, and everything cloud-shaped are out of scope for phase one.
+
 ---
 
 ## Two tracks through this repo
@@ -121,6 +140,9 @@ source .venv/bin/activate
 pip install -r requirements-dev.txt
 pip install -e .
 ```
+
+Working through the [MVP track](docs/mvp/) instead? `pip install -r requirements-mvp.txt`
+installs only the seven packages that track uses.
 
 Verify the install:
 

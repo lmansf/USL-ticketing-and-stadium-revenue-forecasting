@@ -1,6 +1,9 @@
-# Phase one runtime dependencies.
+# Full-track runtime dependencies.
 # Pin ranges, not exact versions - this is a learning repo, not a deployment.
 # Install with: pip install -r requirements.txt
+#
+# Working through docs/mvp/ instead? requirements-mvp.txt is the seven
+# packages that track actually uses, and installs faster.
 
 # Scrape
 requests>=2.31

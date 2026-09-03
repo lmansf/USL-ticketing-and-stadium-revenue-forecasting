@@ -28,6 +28,7 @@ because the parts the MVP cuts are the parts that make the project credible.
 | Tableau | CSV extract into Public | DuckDB JDBC connector during the Desktop trial |
 | Uncertainty | None | Residual band on the drill-down view |
 | Demos | None | Four break-and-fix, three working-behaviour |
+| Install | `requirements-mvp.txt`, seven packages | `requirements.txt` |
 
 ---
 
@@ -52,6 +53,26 @@ twice" is the first thing anyone tries.
 version of this project; it is a different project.
 
 ---
+
+## Install
+
+```
+pip install -r requirements-mvp.txt
+```
+
+Seven packages: `requests` and `lxml` to scrape, `duckdb` and `pandas` to store
+and shape, `xgboost` with `scikit-learn` and `numpy` to model. That is the whole
+stack between the source site and the CSV Tableau reads.
+
+Two pieces of infrastructure, and both are things you already have: a DuckDB
+file on disk, and Tableau Public. Nothing listens on a port, nothing needs an
+API key, nothing authenticates. The transform layer is SQL, but it runs inside
+DuckDB - Python reads the `.sql` file and hands it over. The scheduler is
+Windows Task Scheduler, which is outside Python entirely and is the one place a
+failure will not produce a traceback.
+
+`xgboost` is the only heavy install here; it ships a compiled wheel. It is not
+optional - the two-model comparison is the headline question.
 
 ## The steps
 

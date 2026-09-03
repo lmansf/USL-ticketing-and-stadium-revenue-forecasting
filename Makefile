@@ -10,7 +10,8 @@ DB     ?= data/usl.duckdb
 .PHONY: help
 help:
 	@echo "Setup"
-	@echo "  make install        Install runtime dependencies"
+	@echo "  make install-mvp    Install the seven packages the MVP track uses"
+	@echo "  make install        Install full-track runtime dependencies"
 	@echo "  make install-dev    Install runtime + dev dependencies"
 	@echo ""
 	@echo "Pipeline"
@@ -34,6 +35,10 @@ help:
 	@echo "Housekeeping"
 	@echo "  make clean          Remove caches and build artifacts"
 	@echo "  make clean-db       Delete the DuckDB file (rebuildable from scratch)"
+
+.PHONY: install-mvp
+install-mvp:
+	$(PYTHON) -m pip install -r requirements-mvp.txt
 
 .PHONY: install
 install:
