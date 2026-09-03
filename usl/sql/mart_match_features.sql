@@ -1,0 +1,48 @@
+-- mart_match_features: one row per match, model-ready.
+--
+-- Tier: mart
+-- Doc:  docs/phases/06-features.md
+--
+-- The only table the models read. Both of them - the split between baseline and
+-- prorel happens in code by column selection, not here. If the model layer is
+-- doing joins, this table is not finished.
+--
+-- TODO: implement.
+--
+-- Three families, matching usl/features/definitions.py. Every feature named
+-- there must exist as a column here, and every column here must be named there;
+-- tests/test_features.py enforces both directions.
+--
+--   CALENDAR AND LAG
+--     day_of_week, month, is_weekend, is_midweek
+--     last_home_gate, home_gate_ma3, home_gate_ma5, same_fixture_last_season
+--     Same window-frame rule as int_standings:
+--       ROWS BETWEEN 3 PRECEDING AND 1 PRECEDING
+--     Upper bound 1 PRECEDING, never CURRENT ROW. See exercise 6.1.
+--     Two decisions to make explicitly: whether these windows cross season
+--     boundaries, and whether they include COVID-affected matches. Handle COVID
+--     before computing lags, not after, or a 2021 club's moving average is
+--     dragged toward empty-stadium figures.
+--
+--   MATCH CONTEXT
+--     opponent_club_id, is_derby, matches_remaining, is_season_opener,
+--     is_final_home_match
+--     matches_remaining needs the season's fixture count per club, which is not
+--     constant across nine seasons. Compute it from the schedule rather than
+--     hardcoding it.
+--
+--   PRO-REL
+--     rank_before, opponent_rank_before, rank_gap, points_from_playoff_line,
+--     is_mathematically_live, matches_since_elimination,
+--     points_from_relegation_line
+--     is_mathematically_live has a naive version that is wrong in a way that
+--     matters - see exercise 6.2.
+--     points_from_relegation_line has no ground truth by construction. Build it,
+--     log its importance, and label it as an instrument rather than a predictor.
+--
+-- Plus: match_id, season, date, home_club_id, attendance (the target),
+-- is_covid_affected.
+--
+-- Home matches only - attendance is a property of the home fixture.
+
+SELECT 1 AS todo_replace_me WHERE FALSE;

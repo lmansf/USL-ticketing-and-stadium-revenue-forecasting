@@ -1,0 +1,23 @@
+-- stg_clubs: one row per canonical club, with conference by season.
+--
+-- Tier: staging
+-- Doc:  docs/phases/03-club-name-consistency.md
+--
+-- Sources: club_aliases (usl/ref/club_aliases.csv)
+--          club_conference (usl/ref/club_conference.csv)
+--
+-- TODO: implement.
+--
+-- Shape to produce, one row per (club_id, season):
+--   club_id      VARCHAR   canonical, stable forever - a club that rebrands
+--                          keeps its club_id and gains a new raw_name row
+--   season       INTEGER
+--   conference   VARCHAR   see docs/reference/open-questions.md#conference-membership
+--   display_name VARCHAR   for the dashboard
+--
+-- Conference membership is NOT a constant. Clubs have moved between conferences
+-- across seasons and the number of conferences has itself changed. Do not read
+-- the current season's conferences and apply them backwards - that is wrong for
+-- every club that moved, and it is wrong silently.
+
+SELECT 1 AS todo_replace_me WHERE FALSE;

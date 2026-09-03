@@ -1,0 +1,29 @@
+# Phase one runtime dependencies.
+# Pin ranges, not exact versions - this is a learning repo, not a deployment.
+# Install with: pip install -r requirements.txt
+
+# Scrape
+requests>=2.31
+beautifulsoup4>=4.12
+lxml>=5.0
+
+# Store and transform
+duckdb>=1.0
+pandas>=2.2
+pyarrow>=16.0
+
+# Model
+xgboost>=2.0
+scikit-learn>=1.4
+numpy>=1.26
+
+# Config and CLI
+pydantic>=2.6
+python-dotenv>=1.0
+
+# Tableau extract path (optional - CSV export works without it)
+# pantab>=5.0
+
+# Phase two only. Uncomment when you start docs/phases/11-phase-two-dagster.md
+# dagster>=1.7
+# dagster-webserver>=1.7

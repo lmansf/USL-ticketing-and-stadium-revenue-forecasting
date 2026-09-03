@@ -1,0 +1,74 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "usl-attendance"
+version = "0.1.0"
+description = "USL Championship match attendance forecasting: scrape to DuckDB to SQL to XGBoost to Tableau"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+dependencies = [
+    "requests>=2.31",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+    "duckdb>=1.0",
+    "pandas>=2.2",
+    "pyarrow>=16.0",
+    "xgboost>=2.0",
+    "scikit-learn>=1.4",
+    "numpy>=1.26",
+    "pydantic>=2.6",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "pandas-stubs>=2.2",
+    "types-requests>=2.31",
+]
+# Tableau Hyper extracts. CSV export works without this.
+tableau = ["pantab>=5.0"]
+# Phase two. See docs/phases/11-phase-two-dagster.md
+dagster = ["dagster>=1.7", "dagster-webserver>=1.7"]
+
+[project.scripts]
+usl = "usl.run:main"
+
+[tool.setuptools.packages.find]
+include = ["usl*"]
+
+[tool.setuptools.package-data]
+usl = ["sql/*.sql", "ref/*.csv"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "slow: tests that hit the network or run a full training pass",
+    "fixture_required: tests that need a saved HTML fixture in demo/fixtures/",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_ignores = true
+disallow_untyped_defs = true
+# Stub modules raise NotImplementedError by design; do not flag missing returns there.
+warn_no_return = false
+
+[[tool.mypy.overrides]]
+module = ["duckdb.*", "xgboost.*", "pantab.*"]
+ignore_missing_imports = true

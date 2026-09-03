@@ -1,0 +1,28 @@
+-- stg_matches: one row per match, typed, with canonical club ids.
+--
+-- Tier: staging
+-- Doc:  docs/phases/03-club-name-consistency.md, docs/phases/05-sql-layer.md
+--
+-- TODO: implement.
+--
+-- Three jobs, and no others:
+--   1. Type coercion. raw_matches holds date, score, and attendance as VARCHAR
+--      because raw means raw. Split the score into home_goals and away_goals,
+--      cast the date, cast attendance to an integer. Decide here what happens to
+--      an attendance the source rendered as something non-numeric.
+--   2. Canonical club ids, via a LEFT JOIN to club_aliases on the NORMALISED raw
+--      name. LEFT JOIN, not INNER - the inner join drops unmapped rows and tells
+--      you nothing. The null check in transform/checks.py::all_clubs_mapped is
+--      what turns those nulls into an error naming the exact strings to add.
+--   3. Derived calendar columns: is_weekend, is_midweek, day_of_week, month.
+--
+-- NOT here: standings, lags, or anything requiring a window over other matches.
+-- Those belong in int_standings and mart_match_features. Keeping the tiers
+-- genuinely separate is the discipline this layer exists for.
+--
+-- Shape to produce:
+--   match_id, season, date, home_club_id, away_club_id, home_raw, away_raw,
+--   home_goals, away_goals, attendance, is_covid_affected, day_of_week, month,
+--   is_weekend, is_midweek
+
+SELECT 1 AS todo_replace_me WHERE FALSE;

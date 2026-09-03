@@ -1,0 +1,154 @@
+# Open questions
+
+Decisions the build guide leaves open, plus places where following it literally
+requires a judgement it does not make. Each one says where it is resolved in this repo,
+or that it is not.
+
+Resolving these is part of the work. Leaving them undocumented is the thing to avoid -
+an interviewer probes exactly here, and "I did not notice there was a choice" is the
+only bad answer.
+
+---
+
+## Resolved by the project scope
+
+### Conference rank, not league-wide
+
+The guide names this as a choice and says to write the answer down. **This project ranks
+within conference.** It is the rank that determines playoff qualification, and it is the
+one that will determine relegation.
+
+Resolved in [phase 04](../phases/04-standings-as-of-match-date.md#conference-not-league-wide).
+The [MVP track](../mvp/02-mvp-sql-and-features.md) uses league-wide as an explicit
+simplification.
+
+### Orchestration
+
+The guide uses Dagster throughout. **Phase one uses a plain weekly scheduled task**;
+Dagster is deferred to phase two and documented in full at
+[phase 11](../phases/11-phase-two-dagster.md). Phase-one checks are written as plain
+functions returning a result object specifically so the migration is a decorator rather
+than a rewrite.
+
+### Weather
+
+Deferred to phase two, [phase 12](../phases/12-phase-two-weather.md). Both models train
+without it, and weather is a shared feature rather than a pro-rel one, so its absence
+does not confound the headline comparison.
+
+### Tableau edition
+
+The guide's plan: build against DuckDB via the JDBC connector during the 14-day Desktop
+trial, record the video then, and keep a file-based export path so the free Tableau
+Public edition carries the artifact afterwards. Both paths are documented -
+[phase 08](../phases/08-tableau.md) and
+[tableau-duckdb-connector.md](tableau-duckdb-connector.md) for the live connection,
+[MVP 04](../mvp/04-mvp-tableau.md) for extracts.
+
+Note the constraint that makes this necessary: Tableau Public connects to files only, so
+the connector is unavailable there. The two are not interchangeable.
+
+### Scheduler platform
+
+Windows Task Scheduler, per [MVP 05](../mvp/05-mvp-schedule.md), with a cron equivalent
+noted for macOS and Linux. The scheduler is the only platform-specific piece of the
+project; `scripts/` carries an entry point for each.
+
+---
+
+## Unresolved - you have to decide
+
+### Conference membership
+
+**The guide does not say where conference membership comes from**, and it is not a
+constant. Clubs have moved between conferences across seasons, and the number of
+conferences has itself changed over the nine seasons in scope.
+
+`usl/ref/club_conference.csv` is stubbed as `club_id, season, conference`, which is the
+shape that handles both. **Verify against the source before filling it in.** The wrong
+approach is to read the conference from the current season's standings page and apply it
+backwards - that is wrong for every club that moved, and it is wrong silently.
+
+Open sub-question: what happens to `rank_before` in a season where the league did not
+split into conferences, if such a season exists in your range. Ranking league-wide for
+those seasons is defensible; so is excluding them. Pick one and write it down.
+
+### Which nine seasons
+
+`SEASONS` in `usl/config.py` is a TODO by design. The guide says "all nine available
+seasons" without naming them, and the available range is something you verify on the
+source rather than take on trust. Related: whether the current in-progress season is in
+the training set at all, or held out.
+
+### The playoff line
+
+`points_from_playoff_line` needs a cutoff position, and the number of playoff qualifiers
+per conference has changed across the nine seasons. Hardcoding one number is wrong for
+some seasons. Either put it in a `season, conference, playoff_spots` reference file, or
+derive it from published results, or restrict the feature to seasons where you are sure.
+
+### The relegation line
+
+There is no relegation, so there is no line. `points_from_relegation_line` requires
+inventing a cutoff - bottom two, bottom three, bottom 10 percent - and USL has not
+published the 2028 structure in enough detail to pick one.
+
+This is fine, and it is exactly why the feature is classified as instrumented and
+unvalidated in [the honesty note](../phases/06-features.md#the-honesty-note). Put the
+assumed cutoff in `config.py` where it is visible, and state it wherever the feature
+appears.
+
+### The COVID window
+
+`is_covid_affected` is a date range and the boundaries are a judgement call, not a fact.
+Restrictions eased at different times in different markets, and some 2021 matches were
+capacity-limited. The range lives in `config.py`; say in the README that it is a range
+you chose, and be able to show the model's error with and without the exclusion.
+
+### Derbies
+
+`usl/ref/derbies.csv` is hand-flagged, which means someone decides what counts. Two
+clubs in the same metro is easy. Two clubs three hours apart with a history is a
+judgement. Whatever rule you use, write it in the file's `note` column so the decision
+is recoverable.
+
+### Tie-breaking beyond goals for
+
+Points, then goal difference, then goals for handles almost everything. Genuine ties
+beyond that exist and USL's published tie-breakers include head-to-head. Whether to
+implement that or accept the occasional `RANK()` tie is a call; accepting it is
+reasonable, provided you use `RANK()` rather than `ROW_NUMBER()` so tied clubs share a
+position instead of being ordered arbitrarily by whatever the engine felt like.
+
+### Neutral-site matches
+
+A handful of matches across nine seasons are played away from the home club's ground.
+There is no flag for this in the source. They get the wrong weather in
+[phase two](../phases/12-phase-two-weather.md) and arguably the wrong attendance
+interpretation throughout. Hand-maintain a list, or state the caveat. Not stating it is
+the only wrong answer.
+
+### match_id and rebrands
+
+`match_id` hashes the raw club strings because it has to be computable at load time,
+before the alias mapping runs. Consequence: if the source retroactively renames a club,
+that club's historical `match_id` values change and the upsert inserts duplicates rather
+than updating.
+
+Options: accept it and detect it with a row-count check, or re-key on canonical ids in a
+second pass, or version the raw table. Not addressed in the guide. Decide before it
+happens rather than after.
+
+### Lag windows across season boundaries
+
+Should `home_gate_ma3` for a club's first home match of a season include matches from
+the previous season? Signal (support level carries over) or noise (five-month gap,
+different squad). Flagged in
+[phase 06](../phases/06-features.md#exercise-61---lag-features-without-leakage); not
+decided here.
+
+### Null policy
+
+XGBoost handles nulls natively; imputing and failing are both also legitimate. What is
+not legitimate is not knowing which one your pipeline does. This is demo scenario D4,
+and the demo is about explaining the choice rather than about the null being a bug.

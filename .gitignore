@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Data: the DuckDB file is a build product, never a source of truth.
+# The reference CSVs under usl/ref/ ARE checked in - they are code.
+data/*.duckdb
+data/*.duckdb.tmp
+data/*.duckdb.wal
+data/*.duckdb.lock
+
+# Scraper response cache (see docs/phases/01-scrape-to-raw.md)
+.cache/
+data/cache/
+
+# Logs and run metadata
+logs/
+*.log
+
+# Tableau
+tableau/extracts/*.csv
+tableau/extracts/*.hyper
+tableau/*.twbr
+tableau/Logs/
+
+# Local environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db

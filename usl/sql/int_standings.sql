@@ -1,0 +1,34 @@
+-- int_standings: conference table position as of each match date.
+--
+-- Tier: intermediate
+-- Doc:  docs/phases/04-standings-as-of-match-date.md
+--
+-- The core of the pro-rel thesis, and the hardest SQL in the project. It does
+-- not come pre-built: there is no table on the source for "the standings on
+-- 14 June 2019", only the standings now. You reconstruct it as a running
+-- calculation over match history.
+--
+-- TODO: implement. This is exercise 4.1, and exercise 4.2 refines it.
+--
+-- Two things that will bite you:
+--
+--   POINT-IN-TIME. Use results strictly BEFORE the match date. The window frame
+--   ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING is what enforces it, and it
+--   is the whole exercise. Including the current match leaks its result into the
+--   features meant to predict its attendance, and nothing raises.
+--
+--   TIE-BREAKING. Points, then goal difference, then goals for. Use RANK(), not
+--   ROW_NUMBER(), so genuinely tied clubs share a position rather than being
+--   ordered arbitrarily by whatever the engine felt like.
+--
+-- Shape to produce, one row per (season, club_id, date):
+--   season, conference, club_id, date,
+--   played_before, pts_before, gd_before, gf_before, rank_before
+--
+-- Ranking is WITHIN CONFERENCE, not league-wide. It is the rank that determines
+-- playoff qualification and the one that will determine relegation.
+--
+-- COALESCE the first match of each season to zeros - the window returns null
+-- there and a null rank propagates into your features.
+
+SELECT 1 AS todo_replace_me WHERE FALSE;
