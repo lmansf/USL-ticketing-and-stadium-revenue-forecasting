@@ -10,7 +10,6 @@ usl/
 +-- db.py             DuckDB connection. Contains the one unguided exercise
 +-- run.py            CLI. One command per stage, plus 'weekly'
 +-- ingest/           footystats.py (API client), archive.py (durable raw store)
-+-- scrape/           Attendance fallback only. Delete once the API is confirmed
 +-- load/             raw.py - upsert into raw_matches
 +-- sql/              The three-tier SQL layer, one .sql per model
 +-- transform/        runner.py (materialise in order), checks.py (data quality)

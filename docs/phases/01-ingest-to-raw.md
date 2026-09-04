@@ -49,11 +49,14 @@ What it adds is a bill and a deadline. Scraping worldfootball.net was free and c
 redone any time; this cannot. That is the trade, and it is worth it mainly because of
 the archive rule - you pay once, archive, and own the data afterwards.
 
-**The scraper is not deleted.** `usl/scrape/` remains in the tree, demoted, because the
-attendance question in [phase 00](00-data-access-and-the-clock.md#the-open-question-you-must-resolve-on-day-one)
-is open. If the API carries per-match attendance for USL, delete `usl/scrape/` and this
-paragraph with it. If it does not, the scraper supplies attendance and the API supplies
-everything else, joined on the match key.
+**There is no scraper.** The API is the only ingest path, which is worth stating
+because it buys real simplicity: one source, one key format, one failure mode, no HTML
+parsing, no reconciliation between two sources that share no key.
+
+It also concentrates the risk. If the API is missing a field, there is no fallback - so
+the attendance gate in
+[phase 00](00-data-access-and-the-clock.md#the-gate-verify-attendance-before-you-pay)
+runs before you subscribe, not after.
 
 ---
 
@@ -150,11 +153,10 @@ This is a genuine improvement over hashing `season|date|home|away` the way the s
 version had to. That hash changed whenever the source renamed a club, which silently
 turned updates into inserts. A provider id does not move when a club rebrands.
 
-What you give up is portability. If the attendance question forces you to join scraped
-rows to API rows, the two sources have no shared key and you are back to matching on
-`season + date + club`, fuzzily. The `fs:` prefix is there so that a second source gets
-its own namespace rather than colliding, and so an id in a log line says where it came
-from without a lookup.
+The `fs:` prefix costs nothing and buys optionality. If a second source is ever needed -
+because the API turns out to be missing a field, or because you want to cross-check
+attendance against a published figure - it gets its own namespace rather than colliding,
+and an id in a log line says where it came from without a lookup.
 
 Then load with an upsert, not an insert:
 

@@ -4,8 +4,8 @@ The fastest defensible version of every technical decision in this project, so y
 something running end to end today rather than in three weeks.
 
 **What the MVP is for.** Getting the shape of the pipeline into your hands. One season
-scraped, in DuckDB, through SQL, into two XGBoost models, out to a CSV Tableau can
-read, on a Tuesday schedule. Five steps, an afternoon.
+from the API, in DuckDB, through SQL, into two XGBoost models, out to a CSV Tableau
+can read, on a Tuesday schedule. Five steps, an afternoon.
 
 **What the MVP is not.** It is not the thing you show someone. The full track exists
 because the parts the MVP cuts are the parts that make the project credible.
@@ -28,7 +28,7 @@ because the parts the MVP cuts are the parts that make the project credible.
 | Tableau | CSV extract into Public | DuckDB JDBC connector during the Desktop trial |
 | Uncertainty | None | Residual band on the drill-down view |
 | Demos | None | Four break-and-fix, three working-behaviour |
-| Install | `requirements-mvp.txt`, eight packages | `requirements.txt` |
+| Install | `requirements-mvp.txt`, seven packages | `requirements.txt` |
 
 ---
 
@@ -60,10 +60,11 @@ version of this project; it is a different project.
 pip install -r requirements-mvp.txt
 ```
 
-Eight packages: `requests` and `python-dotenv` to call the FootyStats API,
+Seven packages: `requests` and `python-dotenv` to call the FootyStats API,
 `duckdb` and `pandas` to store and shape, `xgboost` with `scikit-learn` and
-`numpy` to model, and `lxml` only if the attendance fallback scraper turns out
-to be needed. That is the whole stack between the API and the CSV Tableau reads.
+`numpy` to model. No HTML parser, because there is no HTML - the API is JSON and
+there is no scraper. That is the whole stack between the API and the CSV Tableau
+reads.
 
 Two pieces of infrastructure: a DuckDB file on disk, and Tableau Public. Nothing
 listens on a port. The FootyStats key is the one secret, it lives in `.env`, and

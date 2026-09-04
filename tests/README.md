@@ -22,7 +22,6 @@ where correctness has a clear, checkable definition:
 | File | Covers | Why it earns a test |
 |---|---|---|
 | `test_footystats.py` | Archive-before-parse, key handling, schema drift | Runs off a committed example-key fixture, no subscription needed |
-| `test_parse.py` | Fallback scraper's drift guard | Only if the attendance fallback survives |
 | `test_match_id.py` | `match_id` stability and uniqueness | Pure function of four fields |
 | `test_club_mapping.py` | Normalisation, unmapped detection | The silent failure mode - worth pinning down |
 | `test_standings.py` | Point-in-time correctness, tie-breaking, rank scope | Hand-checkable against a small fixture |
@@ -52,4 +51,4 @@ run for anyone, forever, with no key. Pull one `example`-key season (EPL 2018/19
 season id 1625) and the fixture exists. Its 380 matches are a row count you can check
 against the published season rather than against your own parser.
 
-Saved HTML fixtures in `demo/fixtures/` serve the fallback scraper, if it survives.
+There are no HTML fixtures - there is no scraper, and the API is JSON.

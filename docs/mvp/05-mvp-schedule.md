@@ -19,7 +19,7 @@ week means the dashboard is stale for longer than it needs to be.
 
 ## One command
 
-Everything is behind `python -m usl.run weekly`, which runs scrape, transform, train,
+Everything is behind `python -m usl.run weekly`, which runs ingest, transform, train,
 and export in order and writes one run-log row per stage. There is nothing for the
 scheduler to orchestrate - that is deliberate, because a scheduler that knows about
 your pipeline's internals is a scheduler you have to keep in sync with it.
@@ -67,7 +67,7 @@ believe the dashboard.
 Three things to check, in increasing order of trustworthiness:
 
 - **Task Scheduler's Last Run Result.** `0x0` means the process exited zero. It does
-  not mean the pipeline did anything useful - a run that scraped nothing and wrote
+  not mean the pipeline did anything useful - a run that ingested nothing and wrote
   nothing also exits zero.
 - **The log file** under `logs/`. Dated, one per run.
 - **The run log table** in DuckDB. This is the one that matters, because Tableau can
@@ -87,9 +87,9 @@ numbers. What happened, and how would you have known without checking manually?
 Most likely one of three things, and they are hard to tell apart from the exit code
 alone:
 
-- The source had not posted the weekend's matches yet, so the scrape landed zero new
+- The API had not posted the weekend's matches yet, so the ingest landed zero new
   rows. Correct behaviour, stale outcome.
-- The scrape failed, an exception was caught somewhere and logged as a warning, and the
+- The ingest failed, an exception was caught somewhere and logged as a warning, and the
   pipeline carried on with the data it already had.
 - The write failed on a DuckDB lock because Tableau was open, and the same thing
   happened.

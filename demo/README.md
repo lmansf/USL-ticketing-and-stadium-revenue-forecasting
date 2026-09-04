@@ -42,6 +42,6 @@ every scenario.** Check it between takes.
 
 ## Fixtures
 
-`fixtures/` holds saved HTML pages so no demo depends on the live site being up
-or unchanged. They are shared with the test suite - the schema-drift fixture
-serves both. Commit them.
+`fixtures/` holds deliberately corrupted payloads for the schema-drift demo. The
+faithful ones live in `data/raw_archive/`, which is committed - so no demo needs a
+live API call or a working subscription. Commit both.

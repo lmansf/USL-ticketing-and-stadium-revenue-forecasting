@@ -120,7 +120,7 @@ The documentation ships in two parallel tracks. Same architecture, different dep
 | | [MVP track](docs/mvp/) | [Full track](docs/phases/) |
 |---|---|---|
 | Goal | Something running end to end, fast | The portfolio-grade build |
-| Scrape | One season, cached to disk | Nine seasons, backfill + weekly delta |
+| Ingest | One season, free `example` key | Nine seasons, backfill + weekly delta |
 | Idempotency | Primary key + upsert | Same, plus inserted/updated/unchanged logging |
 | SQL | Two tiers collapsed into one file | Three genuinely separate tiers |
 | Standings | League-wide rank | Conference rank, point-in-time, tie-broken |
@@ -154,7 +154,7 @@ pip install -e .
 ```
 
 Working through the [MVP track](docs/mvp/) instead? `pip install -r requirements-mvp.txt`
-installs only the eight packages that track uses.
+installs only the seven packages that track uses.
 
 Verify the install:
 
@@ -165,7 +165,7 @@ make test          # partly red on a fresh clone, by design
 ```
 
 On a fresh clone, lint and typecheck are green and the test suite is not: it collects
-56 tests, of which some pass (the ones checking the feature definitions and the SQL
+51 tests, of which some pass (the ones checking the feature definitions and the SQL
 layer's wiring, which need no implementation), some fail with `NotImplementedError`,
 and the rest skip with a TODO naming what to build.
 
@@ -184,7 +184,8 @@ command is shown so Windows users without `make` can run them directly.
 | Task | Make | Direct |
 |---|---|---|
 | Backfill every configured season | `make backfill` | `python -m usl.run backfill` |
-| Scrape the current season only | `make scrape` | `python -m usl.run scrape` |
+| Ingest the current season only | `make ingest` | `python -m usl.run ingest` |
+| Report what the archive holds | `make archive` | `python -m usl.run archive` |
 | Run the SQL layer | `make transform` | `python -m usl.run transform` |
 | Train both models | `make train` | `python -m usl.run train` |
 | Write Tableau extracts | `make export` | `python -m usl.run export` |
@@ -219,7 +220,6 @@ for Windows Task Scheduler are in [docs/mvp/05-mvp-schedule.md](docs/mvp/05-mvp-
 |   +-- db.py             DuckDB connection and write strategy
 |   +-- run.py            CLI entry point
 |   +-- ingest/           footystats.py (API client), archive.py (durable raw store)
-|   +-- scrape/           Attendance fallback. Delete once the API is confirmed
 |   +-- load/             raw.py - upsert into raw_matches
 |   +-- sql/              The three-tier SQL layer, one .sql file per model
 |   +-- transform/        SQL runner and data-quality checks
@@ -233,7 +233,7 @@ for Windows Task Scheduler are in [docs/mvp/05-mvp-schedule.md](docs/mvp/05-mvp-
 +-- demo/                 Break-and-fix scenarios and saved HTML fixtures
 +-- tableau/              Workbook and extract output
 +-- tests/                Test stubs for the transformations with clear correctness criteria
-+-- scripts/              Scheduler entry points
++-- scripts/              Scheduler entry points, and the attendance gate check
 ```
 
 Two hand-maintained reference files under `usl/ref/` are load-bearing:
@@ -295,6 +295,8 @@ let the subscription lapse, then start Tableau against the archive.
 
 **Before you subscribe** - free, unlimited, no clock running:
 
+0. **`python scripts/check_attendance_coverage.py`** - free, one minute. Confirms an
+   attendance field exists at all before you commit to this provider.
 1. Build the whole ingest client against the FootyStats `example` key (EPL 2018/19).
    Auth, retry, archiving, parsing, the schema guard, the loader.
 2. Get `stg_matches` and the idempotency guard working on that one example season.
@@ -302,8 +304,9 @@ let the subscription lapse, then start Tableau against the archive.
 **During the subscription month** - the clock is running, so pull broadly:
 
 3. `league-list`, find USL Championship, write every season id into `usl/ref/seasons.csv`.
-4. **Resolve the attendance question** ([phase 00](docs/phases/00-data-access-and-the-clock.md#the-open-question-you-must-resolve-on-day-one)).
-   It decides whether the scraper lives or dies.
+4. **Run the attendance gate against a real USL season** -
+   `python scripts/check_attendance_coverage.py --season-id <id>`. There is no
+   fallback source, so this is the check the project rests on.
 5. Backfill every season, plus league tables as a standings cross-check. Archive it all.
 6. Verify the pipeline runs end to end with the key removed. Then let it lapse.
 

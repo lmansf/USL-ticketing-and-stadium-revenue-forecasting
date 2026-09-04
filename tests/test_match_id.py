@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from usl.scrape.parse import add_match_id
+from usl.ingest.footystats import add_match_id
 
 
 def test_match_id_is_stable_across_reparses(tiny_season: pd.DataFrame) -> None:

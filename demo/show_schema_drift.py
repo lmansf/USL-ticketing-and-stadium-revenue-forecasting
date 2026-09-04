@@ -1,10 +1,18 @@
 """Demonstrate schema drift detection. NOT a staged failure.
 
-Feed a saved HTML fixture with a renamed column. The parser raises, naming
-expected versus found. Correct behaviour on display, not a bug being patched.
+Feed an archived response with a required field removed. The parser raises,
+naming expected versus found. Correct behaviour on display, not a bug being
+patched.
 
-The fixture is a normal saved page with one column header edited. Keep it in
-demo/fixtures/ - it is shared with the test suite.
+This matters more with an API than it did with scraped HTML, and for a specific
+reason: the match-detail endpoint is undocumented. It carries no versioning
+promise, no deprecation notice, and no guarantee its field set is the same for
+USL as for the leagues it was presumably built against. A guard that fails loudly
+is the only warning you will get.
+
+The fixture is a real archived payload with one field deleted. It lives in
+demo/fixtures/ rather than data/raw_archive/, because the archive is meant to be
+a faithful record of what the API actually said.
 
 Doc: docs/phases/09-break-and-fix.md, "Demonstrate working, do not break"
 """

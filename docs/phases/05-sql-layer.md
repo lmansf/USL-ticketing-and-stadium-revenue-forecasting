@@ -14,7 +14,7 @@ anything upstream.
 
 | Tier | Table | Job |
 |---|---|---|
-| Raw | `raw_matches` | Exactly as scraped. Never edited. |
+| Raw | `raw_matches` | Exactly as the API returned it. Never edited. |
 | Staging | `stg_clubs`, `stg_matches` | Types, canonical names, one row per match. |
 | Intermediate | `int_standings` | Conference position as of each match date. |
 | Mart | `mart_match_features` | One row per match, model-ready. |
@@ -25,12 +25,12 @@ things:
 - **Raw is a cache of the internet.** You can rebuild every downstream table without
   hitting the source again, which is what makes iterating on the SQL free.
 - **Staging is where cleaning is reviewable.** A type coercion in a `.sql` file shows
-  up in a diff. The same coercion in a pandas call inside the scraper does not.
+  up in a diff. The same coercion in a pandas call inside the ingest client does not.
 - **The mart is the only thing the model sees.** One row per match, all features
   present, no joins left to do at train time. If the model layer is doing joins, the
   mart is not finished.
 
-The temptation is to shortcut - to compute one feature in the scraper because it is
+The temptation is to shortcut - to compute one feature in the ingest client because it is
 easier there, or to have the model reach back to `stg_matches` for one column. Both
 work, and both cost you the ability to reason about where a number came from.
 

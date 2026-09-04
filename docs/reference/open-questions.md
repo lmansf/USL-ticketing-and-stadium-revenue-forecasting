@@ -83,19 +83,24 @@ Open sub-question: what happens to `rank_before` in a season where the league di
 split into conferences, if such a season exists in your range. Ranking league-wide for
 those seasons is defensible; so is excluding them. Pick one and write it down.
 
-### Does the API carry per-match attendance?
+### Does the API carry per-match attendance for USL?
 
-**The one that decides the shape of phase 01, and it must be answered on day one.**
+**Unresolved, and now load-bearing: there is no fallback source.**
 
-Attendance is the target variable; everything else is a feature. FootyStats exposes
-aggregate attendance at team and league level (`average_attendance_home` and similar).
-Whether the per-match record carries a figure, and whether it is populated for USL
-rather than only the major European leagues, is undocumented.
+Attendance is the target variable. FootyStats documents aggregate attendance at team
+and league level (`average_attendance_home` and similar); whether the per-match record
+carries a figure, and whether it is populated for USL rather than only the major
+European leagues, is undocumented and could not be verified from the public docs.
 
-If yes, delete `usl/scrape/` and drop `lxml`. If no, the scraper supplies attendance,
-the API supplies everything else, and they join on `season + date + club` because they
-share no key. Both paths are currently carried; delete the loser rather than keeping
-both.
+This is now a **gate rather than an open question**, because the scraper has been
+deleted and nothing else can supply the target. Run
+`python scripts/check_attendance_coverage.py` before subscribing, and again against a
+real USL season on day one. Watch for the middle outcome - a field that exists but is
+mostly zeroes - which a yes/no check scores as a pass.
+
+If it fails, the scraper is recoverable from git history and the script prints the
+commands. Recovering it means two sources joined on `season + date + club`, since they
+share no key.
 
 ### Season ids
 

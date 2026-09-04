@@ -11,7 +11,7 @@ leaves out and what that costs.
 | [00](00-data-access-and-the-clock.md) | Data access and the clock | The paid month, the archive rule, secrets. **Read first** |
 | [01](01-ingest-to-raw.md) | Ingest to raw | FootyStats client, schema drift, idempotency |
 | [02](02-duckdb-and-the-lock-problem.md) | DuckDB and the lock problem | Single-writer, run logging, the unguided exercise |
-| [03](03-club-name-consistency.md) | Club name consistency | Nine seasons of rebrands, relocations, folds |
+| [03](03-club-name-consistency.md) | Club identity | Provider ids to your own, display names, the failing join |
 | [04](04-standings-as-of-match-date.md) | Standings as of match date | Point-in-time conference rank. The hardest SQL here |
 | [05](05-sql-layer.md) | The SQL layer | Three tiers, checks between them |
 | [06](06-features.md) | Features | Three families, the dead-rubber counterfactual, COVID |

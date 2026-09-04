@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS check_log (
 class RunContext:
     """Metadata for one invocation of the pipeline, shared across its stages.
 
-    A single run_id across scrape, transform, train, and export is what lets you
+    A single run_id across ingest, transform, train, and export is what lets you
     ask "show me every stage of the run that failed last Tuesday" rather than
     reconstructing it from timestamps.
     """
@@ -147,7 +147,7 @@ def start_stage(
     Args:
         con: Open DuckDB connection.
         ctx: The run context.
-        stage: One of 'scrape', 'transform', 'train', 'export'.
+        stage: One of 'ingest', 'transform', 'train', 'export'.
 
     TODO: implement.
     """

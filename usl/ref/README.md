@@ -34,5 +34,5 @@ the subscription month - afterwards there is no way to look up an id you never
 recorded.
 
 **Verify against the source.** The rows shipped here are illustrative examples of
-the file format, not a researched dataset. Build the real contents by scraping
-the distinct club strings from every season in scope and mapping them yourself.
+the file format, not a researched dataset. Build the real contents from the
+distinct club ids the API returns for every season in scope, mapped to your own.

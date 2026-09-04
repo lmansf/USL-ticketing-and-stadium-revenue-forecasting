@@ -122,14 +122,14 @@ The guide's original layout, for reference when you migrate:
 usl/
   defs.py                 # Dagster definitions
   assets/
-    raw.py                # scrape -> raw tables
+    raw.py                # API -> raw tables
     weather.py            # Open-Meteo -> raw_weather
     staging.py            # SQL transforms
     marts.py              # feature table
     models.py             # train, predict, log metrics
 ```
 
-The phase-one package keeps `scrape/`, `load/`, `transform/`, `features/`, `models/`,
+The phase-one package keeps `ingest/`, `load/`, `transform/`, `features/`, `models/`,
 and `export/` as they are. `assets/` sits alongside them and imports from them - the
 assets are a thin orchestration wrapper, not a home for logic. If a Dagster asset
 contains business logic that is not also callable from `python -m usl.run`, the

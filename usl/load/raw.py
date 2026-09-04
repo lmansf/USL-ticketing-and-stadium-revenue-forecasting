@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS raw_matches (
     away_raw    VARCHAR,
     score       VARCHAR,
     attendance  VARCHAR,
-    scraped_at  TIMESTAMP,
+    ingested_at TIMESTAMP,
     source_url  VARCHAR
 );
 """
@@ -70,13 +70,14 @@ def upsert_matches(con: duckdb.DuckDBPyConnection, df: pd.DataFrame) -> LoadStat
 
 
 def backfill(con: duckdb.DuckDBPyConnection, seasons: list[int]) -> LoadStats:
-    """Scrape and load every listed season.
+    """Ingest and load every listed season.
 
-    A one-time operation of a few thousand rows. Sleep between requests.
+    Served from data/raw_archive/ where possible, so re-running is free and
+    works with no API key.
 
     Args:
         con: Open connection with write access.
-        seasons: Season years to load.
+        seasons: FootyStats season ids to load, from usl/ref/seasons.csv.
 
     Returns:
         Aggregate LoadStats across all seasons.

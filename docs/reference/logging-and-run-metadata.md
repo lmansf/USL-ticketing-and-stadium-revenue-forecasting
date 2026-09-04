@@ -32,7 +32,7 @@ One row per stage per run.
 | Column | Type | Notes |
 |---|---|---|
 | `run_id` | VARCHAR | UUID, shared across all stages of one invocation |
-| `stage` | VARCHAR | `scrape`, `transform`, `train`, `export` |
+| `stage` | VARCHAR | `ingest`, `transform`, `train`, `export` |
 | `started_at` | TIMESTAMP | UTC |
 | `finished_at` | TIMESTAMP | UTC, null while running |
 | `status` | VARCHAR | `running`, `success`, `failed` |
@@ -97,7 +97,7 @@ from "never started". A process killed by the OS never gets to write `failed`.
 
 | Stage | Log |
 |---|---|
-| `scrape` | URL per season, cache hit or miss, HTTP status, bytes, parse row count, schema-drift warnings |
+| `ingest` | Endpoint and season id per request, archive hit or miss, HTTP status, bytes, parse row count. **Never the URL - the key is in it** |
 | `load` | Insert/update/unchanged split, resulting table total |
 | `transform` | Row count per model materialised, every check result |
 | `train` | Feature count per model, train and test sizes, split date, MAE/MAPE/RMSE per model including the naive baseline, top ten features by gain |

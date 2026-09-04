@@ -222,9 +222,9 @@ def add_match_id(df: pd.DataFrame) -> pd.DataFrame:
     was renamed, which silently turned updates into inserts. A provider id does
     not move when a club rebrands.
 
-    The namespace prefix is there so a second source - the attendance scraper, if
-    it turns out to be needed - gets its own space rather than colliding, and so
-    an id in a log line says where it came from.
+    The namespace prefix costs nothing and buys optionality: if a second source
+    is ever needed it gets its own space rather than colliding, and an id in a
+    log line says where it came from.
 
     Args:
         df: Parsed matches carrying the provider id.

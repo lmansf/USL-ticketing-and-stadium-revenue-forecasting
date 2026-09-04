@@ -1,15 +1,18 @@
 # Fixtures
 
-Saved HTML pages, so no test and no demo depends on the live site being up or
-unchanged. Commit these.
+Saved payloads, so no test and no demo depends on a live API call or a working
+subscription.
 
 | File | Purpose |
 |---|---|
-| `season_<year>.html` | A real saved season page. Parser tests pin its row count |
-| `season_<year>_drifted.html` | The same page with one column header renamed. Feeds `show_schema_drift.py` and `tests/test_parse.py` |
+| `league-matches_season_1625_drifted.json` | An archived response with a required field removed. Feeds `show_schema_drift.py` |
 
-Both are TODO - save them once you have a working fetch, and keep them out of
-`data/cache/`, which is gitignored and gets cleared.
+Most fixtures do not live here. The real ones are in `data/raw_archive/`, which is
+committed for exactly this reason - a response pulled with the free `example` key is a
+permanent test fixture that costs nothing and keeps working after the subscription ends.
 
-Saving a page is not scraping it repeatedly. One saved copy, committed, is
-politer to the source than a test suite that fetches on every run.
+This directory holds only *deliberately corrupted* payloads, which do not belong in the
+archive because the archive is meant to be a faithful record of what the API actually
+said.
+
+Both are TODO - create them once you have archived a real response.

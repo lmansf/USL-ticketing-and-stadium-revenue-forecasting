@@ -55,7 +55,7 @@ designed around: it should fail loudly on a *new* request while every archived r
 keeps working.
 
 *What it shows:* upstream failure surfaces as a failed asset, not as corrupt data. The
-alternative - a scraper that catches the error, logs a warning, and returns an empty
+alternative - a client that catches the error, logs a warning, and returns an empty
 DataFrame - produces a green run and a mart missing a season. That is the version that
 gets shipped by accident.
 
@@ -108,13 +108,16 @@ a flaw. Frame it as: "re-running is safe, and here is the log line that proves i
 
 ### Schema drift
 
-Feed a saved HTML fixture with a renamed column. The parser raises, naming expected
-versus found. Correct behaviour on display, not a bug being patched. Keep the fixture
-in `demo/fixtures/` - it is a normal saved page with one column header edited.
+Feed an archived response with a required field removed. The parser raises, naming
+expected versus found. Correct behaviour on display, not a bug being patched.
+
+Worth a sentence out loud in the demo: the match-detail endpoint is undocumented, so it
+carries no versioning promise and will not announce a field-set change. This guard is
+the only warning you get.
 
 ### Duplicate rejection
 
-Ingest the same fixture twice. The primary key holds, the log line shows the split.
+Ingest the same archived response twice. The primary key holds, the log line shows the split.
 Closely related to idempotency and worth showing as a separate beat because it is the
 mechanism underneath it.
 

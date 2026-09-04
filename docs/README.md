@@ -41,7 +41,7 @@ the version you show someone.
 | [00](phases/00-data-access-and-the-clock.md) | Data access and the clock | The paid month, the archive rule, secrets |
 | [01](phases/01-ingest-to-raw.md) | Ingest to raw | FootyStats client, schema drift, idempotency |
 | [02](phases/02-duckdb-and-the-lock-problem.md) | DuckDB and the lock problem | Single-writer, run logging, write-to-temp-then-swap |
-| [03](phases/03-club-name-consistency.md) | Club name consistency | Nine seasons of rebrands, relocations, folds |
+| [03](phases/03-club-name-consistency.md) | Club identity | Provider ids to your own, display names, the failing join |
 | [04](phases/04-standings-as-of-match-date.md) | Standings as of match date | Point-in-time conference rank. The hardest SQL here |
 | [05](phases/05-sql-layer.md) | The SQL layer | Three tiers, kept genuinely separate |
 | [06](phases/06-features.md) | Features | Three families, the dead-rubber counterfactual, COVID |

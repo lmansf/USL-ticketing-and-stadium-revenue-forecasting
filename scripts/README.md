@@ -7,10 +7,27 @@ Everything is behind one command - `python -m usl.run weekly` - so there is noth
 for the scheduler to orchestrate. That is deliberate: a scheduler that knows about
 the pipeline's internals is a scheduler you have to keep in sync with it.
 
-| File | Platform |
+| File | Purpose |
 |---|---|
-| `run_weekly.ps1` | Windows, for Task Scheduler |
-| `run_weekly.sh` | macOS and Linux, for cron, launchd, or a systemd timer |
+| `check_attendance_coverage.py` | **Run this before you subscribe.** Real working script, not a stub |
+| `run_weekly.ps1` | Weekly run, Windows Task Scheduler |
+| `run_weekly.sh` | Weekly run, cron / launchd / systemd timer |
+
+## The attendance gate
+
+```
+python scripts/check_attendance_coverage.py                    # free, example key
+python scripts/check_attendance_coverage.py --season-id 1234   # a real USL season
+```
+
+Attendance is the target variable and there is no second source, so this is the check
+the whole project rests on. It reports the share of matches carrying a usable figure
+and the median, because the dangerous outcome is a field that exists but is mostly
+zeroes - a yes/no check calls that a pass. Exits non-zero below 80 percent populated.
+
+See [phase 00](../docs/phases/00-data-access-and-the-clock.md#the-gate-verify-attendance-before-you-pay).
+
+## Scheduling
 
 Registration walkthrough: [docs/mvp/05-mvp-schedule.md](../docs/mvp/05-mvp-schedule.md)
 

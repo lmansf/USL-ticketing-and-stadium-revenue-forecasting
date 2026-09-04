@@ -5,11 +5,9 @@
 # Working through docs/mvp/ instead? requirements-mvp.txt is the seven
 # packages that track actually uses, and installs faster.
 
-# Ingest: FootyStats API (JSON over HTTP) plus the attendance fallback scraper
+# Ingest: FootyStats API, JSON over HTTP. No HTML parsing anywhere.
 requests>=2.31
 python-dotenv>=1.0
-beautifulsoup4>=4.12
-lxml>=5.0
 
 # Store and transform
 duckdb>=1.0

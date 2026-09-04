@@ -176,42 +176,73 @@ inside the month and infinitely expensive outside it.
 
 ---
 
-## The open question you must resolve on day one
+## The gate: verify attendance before you pay
 
-**Does the API return per-match attendance for USL Championship?**
+**Attendance is the target variable.** Everything else in this project is a feature.
+There is no scraper any more and no second source - if the API does not carry
+per-match attendance for USL, there is nothing to predict and the project does not
+exist in its current form.
 
-Attendance is the target variable. Everything else in this project is a feature. And
-attendance is the field football APIs most often lack - results, fixtures, standings and
-xG are everywhere; per-match gate figures are rare.
+So this is a gate, not an open question, and it is cheap to pass through. Run it before
+you subscribe:
 
-What is known: FootyStats exposes aggregate attendance at team and league level
-(`average_attendance_home`, `average_attendance_away` and similar). Whether the
-per-match record carries an attendance figure, and whether it is populated for USL as
-opposed to the major European leagues, is **not documented** and is not something this
-guide can tell you.
+```
+python scripts/check_attendance_coverage.py
+```
 
-The match-detail endpoint is undocumented. It answers, which is how you found it, but
-an undocumented endpoint carries no contract: no versioning promise, no deprecation
-notice, no guarantee the field set is stable between leagues. That is a reason to
-archive its responses aggressively, not a reason to avoid it.
+That is a real working script, not a stub. It uses the free `example` key and the EPL
+2018/19 season to answer the weak question: does an attendance field exist at all,
+anywhere in this API. If it does not, stop - you need a different provider, and you
+have spent nothing finding that out.
 
-So: **before you subscribe, or on the first day if you already have, pull one USL
-season and check whether attendance is populated.** The answer decides the shape of
-phase 01:
+Then, on day one of the subscription, run it against a real USL season:
 
-| If attendance is present | If it is not |
+```
+python scripts/check_attendance_coverage.py --season-id <a USL season id>
+```
+
+**That second run is the one that matters, and the first does not substitute for it.**
+Gate figures are far better covered for major European leagues than for anywhere else,
+so an EPL pass tells you the schema supports attendance, not that FootyStats holds it
+for USL Championship in 2017.
+
+### Three outcomes, not two
+
+The dangerous one is in the middle.
+
+| Outcome | What to do |
 |---|---|
-| FootyStats is the whole source | FootyStats gives results, fixtures, and club ids |
-| `usl/scrape/` is dead code - delete it | worldfootball.net still supplies attendance, scraped |
-| Phase 01 is an API client | Phase 01 is an API client *and* a scraper, joined on a match key |
-| Club aliasing shrinks to almost nothing | Club aliasing stays, and now spans two sources |
+| Field absent | Try the undocumented match-detail endpoint, which returns more per-match fields than the season listing. If it is absent there too, this provider cannot support the project |
+| Present, well populated | Proceed. This is the case the repo is built for |
+| **Present, mostly empty** | The trap. A naive check reports success |
 
-The scaffold currently keeps both paths, with the API primary and the scraper demoted
-but intact, because deleting the scraper is irreversible and this question is open.
-Resolve it, then delete the branch you do not need - carrying both "just in case" is
-how a project ends up with two half-maintained ingest paths.
+That middle case is the likely one and it is why the script reports a *share* and a
+median rather than a yes or no. APIs signal "no data" as `0`, `-1`, `""`, `null` and
+`"N/A"` more or less interchangeably, so a field that is technically present can be six
+thousand zeroes. Sanity-check the median against what you know these clubs actually
+draw - USL gates run in the low thousands, so a median of 0, or a suspiciously round
+number, means placeholder rather than data.
 
----
+The script treats anything below 80 percent populated as unusable and exits non-zero.
+Adjust that threshold if you like, but decide it deliberately rather than eyeballing.
+
+### If the gate fails
+
+The scraper was deleted in favour of the API, which was the right call for a single
+clean ingest path. It is still in git history, and the script prints the recovery
+commands:
+
+```
+git log --oneline --diff-filter=D -- usl/scrape/
+git checkout <sha>^ -- usl/scrape/ tests/test_parse.py
+```
+
+Recovering it means going back to two sources joined on `season + date + club`, because
+the API and worldfootball.net share no key. That is real work, and it is worth knowing
+you might face it *before* the subscription starts rather than in week three.
+
+The honest framing: running this check costs nothing and takes a minute. Subscribing
+first and checking later costs thirty euros and a month.
 
 ## What "done" looks like
 

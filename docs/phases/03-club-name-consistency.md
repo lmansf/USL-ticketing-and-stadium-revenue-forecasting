@@ -16,12 +16,29 @@ it produces a model trained on a dataset missing clubs nobody noticed were missi
 
 ---
 
-## The problem
+## The problem, now smaller than it was
 
-Nine seasons of USL Championship include clubs that renamed, clubs that relocated,
-clubs that folded, and clubs whose name is rendered differently on different pages of
-the same site. Left unhandled these break joins silently: the club is simply absent
-from a season, no error fires, and the row count drops by a number nobody is watching.
+This phase was written for scraped display strings, where the same club appeared as
+`Tampa Bay Rowdies`, `Rowdies`, and `Tampa Bay Rowdies ` across nine seasons of HTML.
+
+The API gives you a stable numeric club id instead, which removes most of that. A club
+that rebrands keeps its id, so the rename problem largely evaporates.
+
+**Do not delete this phase.** What remains is smaller but still load-bearing:
+
+- The provider's id is *theirs*, not yours. Mapping it to your own `club_id` means a
+  second source, or a provider change, does not force you to re-key nine seasons of
+  history. The mapping file is one column wider and far shorter than it would have been.
+- You still need display names for the dashboard, and the API's name for a club is its
+  *current* name, so a 2017 match will render under a 2026 brand unless you decide
+  otherwise. That is a real choice - historical accuracy or recognisability - and it is
+  worth making deliberately.
+- The failing join still matters. A club id that appears in matches but not in your
+  mapping must stop the pipeline, for exactly the reason below.
+
+The original failure mode is unchanged in kind: left unhandled, an unmapped club is
+simply absent from a season, no error fires, and the row count drops by a number nobody
+is watching.
 
 A relegation-era dataset will make this worse, not better - clubs moving between
 divisions is the same slowly-changing-dimension problem with higher stakes.
@@ -35,10 +52,14 @@ A checked-in `club_aliases.csv` mapping every raw string ever seen to a canonica
 
 ```csv
 raw_name,club_id,note
-Tampa Bay Rowdies,tampa_bay_rowdies,
-Rowdies,tampa_bay_rowdies,short form
+93,tampa_bay_rowdies,FootyStats id
+Tampa Bay Rowdies,tampa_bay_rowdies,display name as of 2026
 Ottawa Fury FC,ottawa_fury,folded 2020
 ```
+
+`raw_name` now usually holds a provider id rather than a display string. The column
+keeps its name because the join is the same join, and because a second source would
+bring strings back.
 
 Three rules for the file:
 
@@ -109,24 +130,26 @@ rows to the CSV. Decide whether you should, and implement whichever answer you p
 <details>
 <summary>Solution</summary>
 
-Normalise before the join, and store the normalised form in the CSV:
+One function, applied on both sides of the join and in the loader that reads the CSV,
+so the two cannot drift:
 
 ```python
-def normalize_club_name(raw: str) -> str:
-    """Collapse whitespace and strip. Nothing else."""
-    return " ".join(raw.split())
+def normalize_club_key(raw: object) -> str:
+    """Canonical string form of a club identifier, provider id or name."""
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        return str(int(raw))
+    return " ".join(str(raw).split())
 ```
 
-Whitespace and casing differences are transport noise, not real aliases, and putting
-them in the CSV buries the genuine rebrands in a pile of near-duplicates. Anything
-beyond whitespace and case - dropping "FC", stripping accents, fuzzy matching - is a
-different call, and the answer is usually no. Aggressive normalisation collides
-distinct clubs, and a collision here is the exact silent failure this phase exists to
-prevent. A near-miss you have to add to the CSV by hand costs thirty seconds; a
-collision costs you a corrupted feature you may never find.
+This is duller than the scraped version and that is the point - stable ids removed most
+of the problem. What is left is a genuine trap, though, and it is a silent one: `93` and
+`"93"` are different keys, the join produces nulls, and the null check fires with an
+error message that reads as though a club is missing when actually a type is.
 
-Apply the same function on both sides of the join, and in the loader that reads the
-CSV, so the two can never drift.
+The whitespace handling stays for the display-name rows. Anything more aggressive -
+dropping "FC", stripping accents, fuzzy matching - is still the wrong answer for the
+same reason as before: aggressive normalisation collides distinct clubs, and a collision
+is the exact silent failure this phase exists to prevent.
 </details>
 
 ---

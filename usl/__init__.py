@@ -1,6 +1,6 @@
 """USL Championship match attendance forecasting.
 
-Pipeline: scrape -> DuckDB -> SQL -> XGBoost -> Tableau.
+Pipeline: FootyStats API -> DuckDB -> SQL -> XGBoost -> Tableau.
 
 This package ships as stubs. Function signatures, docstrings, and contracts are
 here; the bodies are the exercises in docs/. See docs/README.md.

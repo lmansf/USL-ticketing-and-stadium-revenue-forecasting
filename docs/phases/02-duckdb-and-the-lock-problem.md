@@ -29,7 +29,7 @@ debuggable.
 ## Guard one - log every run and its outcome
 
 Logging is a first-class feature of this pipeline, not an afterthought bolted on at
-the end. Every scraper run logs. The run log is a table in the database, not just a
+the end. Every ingest run logs. The run log is a table in the database, not just a
 text file, so Tableau can read it and so a stale run is visible in the dashboard
 rather than only in a console nobody opens.
 
