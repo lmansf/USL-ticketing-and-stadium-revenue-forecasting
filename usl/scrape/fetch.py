@@ -4,7 +4,10 @@ Be polite. Nine seasons is a one-time backfill of a few thousand rows. Sleep
 between requests, set a real User-Agent, and cache responses to disk during
 development so you are not re-hitting the site every time you fix a parse bug.
 
-See docs/phases/01-scrape-to-raw.md
+ATTENDANCE FALLBACK ONLY - see usl/scrape/__init__.py. Delete this module
+if the FootyStats API carries per-match attendance.
+
+See docs/phases/01-ingest-to-raw.md
 """
 
 from __future__ import annotations
@@ -72,7 +75,7 @@ def fetch_season_html(season: int, *, force: bool = False) -> str:
 
     TODO: implement.
     """
-    raise NotImplementedError("TODO: see docs/phases/01-scrape-to-raw.md, exercise 1.3")
+    raise NotImplementedError("TODO: see docs/phases/01-ingest-to-raw.md, exercise 1.3")
 
 
 def _get_with_retry(url: str) -> str:

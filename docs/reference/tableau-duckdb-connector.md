@@ -17,7 +17,11 @@ a search result suggested it will cost you an afternoon.
 will not appear, and there is no workaround - it is a licensing boundary, not a
 technical one. Desktop is a 14-day trial with no card required.
 
-**Start the trial last.** It is the only clock in this project. Finish the pipeline,
+**Start the trial last.** It is the *second* clock in this project - the
+FootyStats subscription is the first and the expensive one, and it should have
+lapsed before this one starts. See
+[phase 00](../phases/00-data-access-and-the-clock.md).
+Finish the pipeline,
 let it run for two weeks so you have real history, and only then install this.
 
 ---

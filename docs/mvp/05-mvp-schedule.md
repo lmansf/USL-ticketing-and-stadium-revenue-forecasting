@@ -118,7 +118,7 @@ downgraded. Be suspicious of every `except` in your pipeline that does not re-ra
 
 ## The lock, again
 
-The MVP answer in [MVP 01](01-mvp-scrape-to-duckdb.md#the-lock) was "close Tableau
+The MVP answer in [MVP 01](01-mvp-ingest-to-duckdb.md#the-lock) was "close Tableau
 first". Scheduling is where that stops working, because at 06:00 on Tuesday nobody is
 there to close anything.
 

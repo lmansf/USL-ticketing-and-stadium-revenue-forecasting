@@ -10,7 +10,11 @@ running.
 | Use it for | The shipped artifact, and after day 15 | Building the live dashboard, and the video |
 | Doc | [MVP 04](../docs/mvp/04-mvp-tableau.md) | [phase 08](../docs/phases/08-tableau.md), [connector setup](../docs/reference/tableau-duckdb-connector.md) |
 
-**Start the trial last.** It is the only clock in this project. Finish the
+**Start the trial last.** It is the *second* clock in this project - the
+FootyStats subscription is the first and the expensive one, and it should have
+lapsed before this one starts. See
+[phase 00](../docs/phases/00-data-access-and-the-clock.md).
+Finish the
 pipeline, let it run for two weeks so you have real history, then install the
 connector and spend all 14 days on the dashboard.
 

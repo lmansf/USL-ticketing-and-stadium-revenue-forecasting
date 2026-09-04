@@ -3,7 +3,7 @@
 This behaviour ships working. It is demonstrated as correct in phase 09, not
 staged as a deliberate failure to be fixed on camera.
 
-Doc: docs/phases/01-scrape-to-raw.md, exercise 1.2
+Doc: docs/phases/01-ingest-to-raw.md, exercise 1.2
      docs/phases/09-break-and-fix.md, "Demonstrate working, do not break"
 """
 

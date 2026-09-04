@@ -1,6 +1,6 @@
 """match_id stability and uniqueness.
 
-Doc: docs/phases/01-scrape-to-raw.md, exercise 1.2
+Doc: docs/phases/01-ingest-to-raw.md, exercise 1.2
 """
 
 from __future__ import annotations

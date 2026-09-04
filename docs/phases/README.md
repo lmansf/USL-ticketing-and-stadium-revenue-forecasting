@@ -8,7 +8,8 @@ leaves out and what that costs.
 
 | | Phase | Covers |
 |---|---|---|
-| [01](01-scrape-to-raw.md) | Scrape to raw | Schema drift, idempotency, politeness, caching |
+| [00](00-data-access-and-the-clock.md) | Data access and the clock | The paid month, the archive rule, secrets. **Read first** |
+| [01](01-ingest-to-raw.md) | Ingest to raw | FootyStats client, schema drift, idempotency |
 | [02](02-duckdb-and-the-lock-problem.md) | DuckDB and the lock problem | Single-writer, run logging, the unguided exercise |
 | [03](03-club-name-consistency.md) | Club name consistency | Nine seasons of rebrands, relocations, folds |
 | [04](04-standings-as-of-match-date.md) | Standings as of match date | Point-in-time conference rank. The hardest SQL here |
@@ -23,19 +24,21 @@ leaves out and what that costs.
 
 ## Build order
 
-Not the same as the reading order. Phases 01 through 07 build in sequence;
-`int_standings` (phase 04) is the hardest SQL and belongs before the fun parts.
+Not the same as the reading order, and it is now shaped by two deadlines rather
+than one. The full ordering, with what is free and what is on a clock, is in the
+[top-level README](../../README.md#build-order).
 
-1. Scrape one season, print the DataFrame. Nothing else.
-2. Backfill all nine into DuckDB with the idempotency guard.
-3. Staging plus club aliases, failing loudly on unmapped names.
-4. `int_standings`.
-5. Mart plus features.
-6. Both models, all three output tables.
-7. Tableau extracts.
-8. Schedule the weekly task and let it run for two weeks so you have real history.
-9. **Then** start the Tableau Desktop trial.
-10. Record, write the delivery email, send.
+The short version:
 
-Steps 1 through 8 are free and unlimited. Step 9 is a 14-day clock. Do not start
-it early.
+1. **Before subscribing, free.** Build the whole ingest client against the
+   FootyStats `example` key. Get one season through `stg_matches`.
+2. **During the paid month.** Season ids, the attendance question, the full
+   backfill, league tables as a cross-check. Archive everything, then verify the
+   pipeline runs with the key removed.
+3. **After it lapses, free again.** Staging, `int_standings` (the hardest SQL,
+   before the fun parts), mart, both models, extracts, the weekly task.
+4. **Then** the 14-day Tableau trial, then record and send.
+
+The FootyStats clock comes first and is the unforgiving one - lapsing costs you
+the data permanently unless it is archived. The Tableau clock only costs you a
+live connection. Do not run them in the same month if you can avoid it.

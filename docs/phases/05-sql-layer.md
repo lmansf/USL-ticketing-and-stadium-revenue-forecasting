@@ -76,7 +76,7 @@ def run_sql_layer(con) -> dict[str, int]:
 `CREATE OR REPLACE TABLE ... AS` makes every staging and downstream model idempotent
 for free - it is a full rebuild each time, and at this data size a full rebuild costs
 nothing. Note that this is the opposite of the `raw_matches` strategy in
-[phase 01](01-scrape-to-raw.md), which upserts because it must not lose history that
+[phase 01](01-ingest-to-raw.md), which upserts because it must not lose history that
 the source no longer serves. Raw accumulates; everything below it is derived and
 disposable. Being able to explain that distinction is worth more than either
 implementation.

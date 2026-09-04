@@ -4,7 +4,7 @@ Re-running Tuesday's job twice must not double any club's attendance. This works
 correctly from day one - it is not a demo failure. See
 docs/phases/09-break-and-fix.md, "Demonstrate working, do not break".
 
-See docs/phases/01-scrape-to-raw.md
+See docs/phases/01-ingest-to-raw.md
 """
 
 from __future__ import annotations
@@ -62,11 +62,11 @@ def upsert_matches(con: duckdb.DuckDBPyConnection, df: pd.DataFrame) -> LoadStat
     Returns:
         LoadStats with the insert/update/unchanged split.
 
-    TODO: implement. See docs/phases/01-scrape-to-raw.md, exercise 1.2. DuckDB's
+    TODO: implement. See docs/phases/01-ingest-to-raw.md, exercise 1.2. DuckDB's
     ON CONFLICT does not hand you the split, so compute it against the existing
     keys before the write.
     """
-    raise NotImplementedError("TODO: see docs/phases/01-scrape-to-raw.md, exercise 1.2")
+    raise NotImplementedError("TODO: see docs/phases/01-ingest-to-raw.md, exercise 1.2")
 
 
 def backfill(con: duckdb.DuckDBPyConnection, seasons: list[int]) -> LoadStats:

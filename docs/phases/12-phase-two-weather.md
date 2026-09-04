@@ -33,7 +33,7 @@ Hand-build `stadiums.csv` once, check it in, and loop.
 
 Cache the archive responses. Historical weather never changes, so re-requesting it on
 every run is pure waste - the same reasoning as the completed-season cache in
-[phase 01](01-scrape-to-raw.md#exercise-13---fetch-politeness-and-caching), and the same
+[phase 01](01-ingest-to-raw.md#exercise-13---rate-limiting-and-the-archive-cache), and the same
 implementation shape.
 
 ---

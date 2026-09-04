@@ -5,8 +5,9 @@
 # Working through docs/mvp/ instead? requirements-mvp.txt is the seven
 # packages that track actually uses, and installs faster.
 
-# Scrape
+# Ingest: FootyStats API (JSON over HTTP) plus the attendance fallback scraper
 requests>=2.31
+python-dotenv>=1.0
 beautifulsoup4>=4.12
 lxml>=5.0
 
@@ -22,7 +23,6 @@ numpy>=1.26
 
 # Config and CLI
 pydantic>=2.6
-python-dotenv>=1.0
 
 # Tableau extract path (optional - CSV export works without it)
 # pantab>=5.0

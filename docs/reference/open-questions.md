@@ -22,6 +22,16 @@ Resolved in [phase 04](../phases/04-standings-as-of-match-date.md#conference-not
 The [MVP track](../mvp/02-mvp-sql-and-features.md) uses league-wide as an explicit
 simplification.
 
+### Data source and the paid month
+
+FootyStats, roughly 30 EUR on the entry tier, for one month only. That makes data
+acquisition the project's first hard deadline and reorders the build:
+[phase 00](../phases/00-data-access-and-the-clock.md) now comes before everything.
+
+Resolved consequences: every raw response is archived to `data/raw_archive/`, which is
+committed rather than gitignored; the pipeline must run end to end with no API key; and
+the client is built against the free `example` key before the subscription starts.
+
 ### Orchestration
 
 The guide uses Dagster throughout. **Phase one uses a plain weekly scheduled task**;
@@ -73,12 +83,47 @@ Open sub-question: what happens to `rank_before` in a season where the league di
 split into conferences, if such a season exists in your range. Ranking league-wide for
 those seasons is defensible; so is excluding them. Pick one and write it down.
 
-### Which nine seasons
+### Does the API carry per-match attendance?
 
-`SEASONS` in `usl/config.py` is a TODO by design. The guide says "all nine available
-seasons" without naming them, and the available range is something you verify on the
-source rather than take on trust. Related: whether the current in-progress season is in
-the training set at all, or held out.
+**The one that decides the shape of phase 01, and it must be answered on day one.**
+
+Attendance is the target variable; everything else is a feature. FootyStats exposes
+aggregate attendance at team and league level (`average_attendance_home` and similar).
+Whether the per-match record carries a figure, and whether it is populated for USL
+rather than only the major European leagues, is undocumented.
+
+If yes, delete `usl/scrape/` and drop `lxml`. If no, the scraper supplies attendance,
+the API supplies everything else, and they join on `season + date + club` because they
+share no key. Both paths are currently carried; delete the loser rather than keeping
+both.
+
+### Season ids
+
+You cannot request a year from FootyStats, only a `season_id`. The mapping lives in
+`usl/ref/seasons.csv` and comes from the `league-list` endpoint.
+
+**This is only discoverable while subscribed.** An id you never recorded cannot be
+looked up afterwards. Fill the file in on day one.
+
+Related: whether the current in-progress season is in the training set at all, or held
+out.
+
+### League selection on the entry tier
+
+The roughly 30 EUR tier covers a limited number of leagues that you select, not
+everything. USL Championship being absent from `league-list` is a selection problem
+rather than a coverage problem. Unverified: whether selecting a league grants all of its
+historical seasons or whether each season counts separately against the allowance. Check
+before assuming the nine-season backfill is possible, because the answer changes the
+plan for the month.
+
+### The undocumented match-detail endpoint
+
+It answers, which is how it was found, but it carries no contract: no versioning
+promise, no deprecation notice, no guarantee the field set is the same for USL as for
+the leagues it was presumably built against. That is a reason to archive its responses
+aggressively, not to avoid it. Assume it can change or vanish without notice, and make
+sure nothing in the pipeline needs to call it again after the archive is complete.
 
 ### The playoff line
 

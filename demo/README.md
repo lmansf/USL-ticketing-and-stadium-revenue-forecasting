@@ -12,7 +12,7 @@ Full walkthrough and the reasoning behind each: [docs/phases/09-break-and-fix.md
 | | Scenario | Script | Shows |
 |---|---|---|---|
 | D1 | Locked DuckDB file produces a stale run | `d1_locked_file.py` | The failure is legible, not mysterious |
-| D2 | 404 season URL | `d2_dead_url.py` | Upstream failure surfaces as a failed asset, not corrupt data |
+| D2 | Failed API request (bad season id, or a 401 when the month ends) | `d2_dead_url.py` | Upstream failure surfaces as a failed asset, not corrupt data |
 | D3 | Club rename silently drops joined rows | `d3_club_rename.py` | Row-count logging catches silent data loss |
 | D4 | Null injected into a feature column | `d4_null_injection.py` | The null policy is a decision you made |
 

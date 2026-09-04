@@ -8,7 +8,8 @@ about the pipeline's internals is a scheduler you have to keep in sync with it.
 Stages can also be run individually while you are building:
 
     python -m usl.run backfill
-    python -m usl.run scrape
+    python -m usl.run ingest
+    python -m usl.run archive
     python -m usl.run transform
     python -m usl.run train
     python -m usl.run export
@@ -29,10 +30,11 @@ log = logging.getLogger(__name__)
 
 
 def cmd_backfill(args: argparse.Namespace) -> int:
-    """Scrape and load every season in config.SEASONS.
+    """Ingest and load every season in usl/ref/seasons.csv.
 
-    A one-time operation. Sleep between requests, and log per season as you go -
-    a backfill that fails on season seven should tell you it got through six.
+    Served from data/raw_archive/ where possible, so re-running costs nothing and
+    works with no API key. Log per season as you go - a backfill that fails on
+    season seven should tell you it got through six.
 
     Args:
         args: Parsed arguments, carrying db and force.
@@ -43,14 +45,20 @@ def cmd_backfill(args: argparse.Namespace) -> int:
     TODO: implement. Open the database with db.connect_for_write, ensure the log
     and raw tables, run load.raw.backfill, and record the stage either way.
     """
-    raise NotImplementedError("TODO: see docs/phases/01-scrape-to-raw.md")
+    raise NotImplementedError("TODO: see docs/phases/01-ingest-to-raw.md")
 
 
-def cmd_scrape(args: argparse.Namespace) -> int:
-    """Scrape and load the current season only.
+def cmd_ingest(args: argparse.Namespace) -> int:
+    """Ingest and load the current season only.
 
     The weekly delta. Everything already loaded is updated in place rather than
     appended - see load.raw.upsert_matches.
+
+    Note this is the one stage that genuinely needs a live subscription: a new
+    week of matches is by definition not in the archive. Once the subscription
+    lapses this becomes a no-op against archived data, which is correct but worth
+    saying out loud in the run log rather than letting it look like a successful
+    refresh.
 
     Args:
         args: Parsed arguments.
@@ -60,7 +68,24 @@ def cmd_scrape(args: argparse.Namespace) -> int:
 
     TODO: implement.
     """
-    raise NotImplementedError("TODO: see docs/phases/01-scrape-to-raw.md")
+    raise NotImplementedError("TODO: see docs/phases/01-ingest-to-raw.md")
+
+
+def cmd_archive(args: argparse.Namespace) -> int:
+    """Report what data/raw_archive/ currently holds.
+
+    The question that matters while the subscription clock is running: what have
+    I not pulled yet? Worth running daily during the paid month.
+
+    Args:
+        args: Parsed arguments.
+
+    Returns:
+        Process exit code.
+
+    TODO: implement over ingest.archive.archive_summary().
+    """
+    raise NotImplementedError("TODO: see docs/phases/00-data-access-and-the-clock.md")
 
 
 def cmd_transform(args: argparse.Namespace) -> int:
@@ -107,7 +132,7 @@ def cmd_export(args: argparse.Namespace) -> int:
 
 
 def cmd_weekly(args: argparse.Namespace) -> int:
-    """The Tuesday run: scrape, transform, train, export, in order.
+    """The Tuesday run: ingest, transform, train, export, in order.
 
     One run_id across all four stages, so "show me every stage of the run that
     failed last Tuesday" is one query rather than a reconstruction from
@@ -131,7 +156,8 @@ def cmd_weekly(args: argparse.Namespace) -> int:
 
 COMMANDS = {
     "backfill": cmd_backfill,
-    "scrape": cmd_scrape,
+    "ingest": cmd_ingest,
+    "archive": cmd_archive,
     "transform": cmd_transform,
     "train": cmd_train,
     "export": cmd_export,
@@ -159,7 +185,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Ignore the scrape cache and re-fetch, including completed seasons.",
+        help=(
+            "Re-request even if the response is already archived. Spends a request "
+            "against the subscription - only useful for correcting an archived response."
+        ),
     )
     parser.add_argument(
         "--verbose",

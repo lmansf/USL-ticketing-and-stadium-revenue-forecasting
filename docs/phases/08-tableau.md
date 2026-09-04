@@ -26,8 +26,14 @@ and keep a file-based export path so Tableau Public carries the static version
 afterwards.
 
 **Start the trial only when the pipeline is finished and data is flowing.** Spend all
-14 days on the dashboard, not on the plumbing. Steps 1 through 8 of the build order are
-free and unlimited; this is the only step on a clock.
+14 days on the dashboard, not on the plumbing.
+
+This is the *second* clock in the project. The FootyStats subscription
+([phase 00](00-data-access-and-the-clock.md)) is the first, and it is the unforgiving
+one: when it lapses you lose the data unless you archived it, whereas when this trial
+lapses you lose only the live connection and your CSV extracts still open. Ideally the
+subscription has already ended and everything is served from `data/raw_archive/` before
+you start these 14 days.
 
 Because the trial expires, `usl/export/extracts.py` is not optional and not a fallback
 you write if there is time. It is the thing that makes this repo useful to someone who

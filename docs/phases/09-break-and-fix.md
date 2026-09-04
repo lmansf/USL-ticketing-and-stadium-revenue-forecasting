@@ -44,10 +44,15 @@ exactly the demo shows depends on which strategy you chose - a retry demo and a
 temp-file-swap demo look different and say different things. Whichever you built, be
 able to say what happens in the other case.
 
-### D2 - 404 source
+### D2 - Failed API request
 
-Point a season URL at a dead path. The run shows a failed step with the HTTP status and
-the URL. Fix, re-run.
+Point an ingest call at a bad season id. The run shows a failed step with the endpoint
+and the HTTP status. Fix, re-run.
+
+The variant that will actually happen to you is a 401 on the day the subscription
+month ends. Worth demoing that one too, since it is the failure this project is
+designed around: it should fail loudly on a *new* request while every archived request
+keeps working.
 
 *What it shows:* upstream failure surfaces as a failed asset, not as corrupt data. The
 alternative - a scraper that catches the error, logs a warning, and returns an empty
@@ -57,8 +62,12 @@ gets shipped by accident.
 *Script:* `demo/d2_dead_url.py`
 
 *Watch for:* if your retry logic from
-[phase 01](01-scrape-to-raw.md#exercise-13---fetch-politeness-and-caching) retries a
-404, this demo takes five minutes of backoff before it fails. A 404 is not transient.
+[phase 01](01-ingest-to-raw.md#exercise-13---rate-limiting-and-the-archive-cache) retries
+a 401 or 404, this demo takes minutes of backoff before failing. Neither is transient,
+and inside a 30-day subscription window that wasted time is not free.
+
+*Also worth showing:* the error message names the endpoint and the status but **not**
+the request URL, because the API key is in it.
 
 ### D3 - The silent one
 

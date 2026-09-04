@@ -1,16 +1,25 @@
-# MVP track dependencies - the seven packages docs/mvp/ actually uses.
+# MVP track dependencies - the eight packages docs/mvp/ actually uses, or
+# seven once you have confirmed the API carries attendance and dropped lxml.
 #
 #   pip install -r requirements-mvp.txt
 #
-# Everything between DuckDB and Tableau is Python. Nothing here listens on a
-# port, needs an API key, or authenticates against anything. The two pieces of
-# infrastructure are the DuckDB file on disk and Tableau Public.
+# Everything between the API and Tableau is Python. Nothing here listens on a
+# port. The FootyStats key is the one secret, it lives in .env, and the
+# pipeline runs without it once the archive is populated.
 #
 # Move to requirements.txt when you start the full track - it adds nothing you
 # have to unlearn, only things the MVP does not reach for yet.
 
-# Scrape. lxml is pandas.read_html's parser, not a direct import of ours.
+# Ingest. The FootyStats API is JSON over HTTP, so requests is the whole
+# client; python-dotenv reads the paid API key out of .env so it never lands in
+# source. Leave the key empty and the pipeline runs from data/raw_archive/.
 requests>=2.31
+python-dotenv>=1.0
+
+# Only needed if the attendance fallback scraper turns out to be necessary -
+# see the open question in docs/phases/00-data-access-and-the-clock.md. It is
+# pandas.read_html's parser, not a direct import of ours. Delete this line once
+# you have confirmed the API carries per-match attendance.
 lxml>=5.0
 
 # Store and transform. The SQL layer runs inside DuckDB; Python only reads the
@@ -27,7 +36,6 @@ numpy>=1.26
 # Not needed for the MVP, and deliberately absent:
 #   dagster        phase two - the MVP uses Windows Task Scheduler
 #   pantab         only for Hyper extracts; the MVP writes CSV
-#   beautifulsoup4 pandas.read_html with lxml covers the parse
+#   beautifulsoup4 pandas.read_html with lxml covers the fallback parse
 #   pyarrow        no Arrow interchange in the MVP path
 #   pydantic       config.py is module-level constants, not a settings model
-#   python-dotenv  nothing in the MVP needs a secret or an API key

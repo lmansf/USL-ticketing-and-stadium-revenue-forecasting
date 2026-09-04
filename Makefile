@@ -10,17 +10,18 @@ DB     ?= data/usl.duckdb
 .PHONY: help
 help:
 	@echo "Setup"
-	@echo "  make install-mvp    Install the seven packages the MVP track uses"
+	@echo "  make install-mvp    Install the eight packages the MVP track uses"
 	@echo "  make install        Install full-track runtime dependencies"
 	@echo "  make install-dev    Install runtime + dev dependencies"
 	@echo ""
 	@echo "Pipeline"
-	@echo "  make backfill       Scrape all configured seasons into raw_matches"
-	@echo "  make scrape         Scrape the current season only"
+	@echo "  make backfill       Load every season into raw_matches (from the archive)"
+	@echo "  make ingest         Ingest the current season only (needs a live key)"
+	@echo "  make archive        Report what data/raw_archive/ holds"
 	@echo "  make transform      Run the SQL layer: staging, intermediate, mart"
 	@echo "  make train          Train both models, write metrics and importance"
 	@echo "  make export         Write Tableau extracts to tableau/extracts/"
-	@echo "  make weekly         The full Tuesday run: scrape, transform, train, export"
+	@echo "  make weekly         The full Tuesday run: ingest, transform, train, export"
 	@echo ""
 	@echo "Quality"
 	@echo "  make test           Run the test suite"
@@ -53,9 +54,13 @@ install-dev:
 backfill:
 	$(PYTHON) -m usl.run backfill --db $(DB)
 
-.PHONY: scrape
-scrape:
-	$(PYTHON) -m usl.run scrape --db $(DB)
+.PHONY: ingest
+ingest:
+	$(PYTHON) -m usl.run ingest --db $(DB)
+
+.PHONY: archive
+archive:
+	$(PYTHON) -m usl.run archive --db $(DB)
 
 .PHONY: transform
 transform:
@@ -95,7 +100,7 @@ check: lint typecheck test
 .PHONY: demo-list
 demo-list:
 	@echo "D1  Locked DuckDB file producing a stale run   demo/d1_locked_file.py"
-	@echo "D2  404 season URL surfacing as a failed step  demo/d2_dead_url.py"
+	@echo "D2  Failed API request as a failed step        demo/d2_dead_url.py"
 	@echo "D3  Club rename silently dropping rows         demo/d3_club_rename.py"
 	@echo "D4  Null injected into a feature column        demo/d4_null_injection.py"
 	@echo ""

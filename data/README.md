@@ -1,21 +1,27 @@
 # data/
 
-Holds `usl.duckdb` and the scraper's response cache. Both are gitignored: the
-database is a build product, rebuildable from the source with `make backfill`,
-and the cache is disposable.
+Holds `usl.duckdb`, which is gitignored and disposable, and `raw_archive/`, which
+is committed and is not.
 
-Nothing here is a source of truth. The sources of truth are the code, the SQL, and
-the four hand-maintained CSVs under `usl/ref/`.
+That split is the important thing on this page.
 
 ```
 data/
-+-- usl.duckdb        The database. Single file, single writer
++-- usl.duckdb        The database. Gitignored. Rebuildable from raw_archive/
 +-- usl.duckdb.tmp    Only present mid-run if you took the swap route in db.py
-+-- cache/            Saved HTTP responses, keyed by season
++-- raw_archive/      Every raw API response. COMMITTED. Not regenerable
++-- cache/            Scratch. Gitignored, clearable
 ```
 
-`data/cache/` is for development convenience and gets cleared. Fixtures you want
-to keep - for tests and demos - belong in `demo/fixtures/`, which is committed.
+**`raw_archive/` is the source of truth for data.** The FootyStats subscription runs
+for one month; once it lapses this directory is the only copy of the source data in
+existence for this project, and no amount of later work regenerates it. See
+[data/raw_archive/README.md](raw_archive/README.md) and
+[phase 00](../docs/phases/00-data-access-and-the-clock.md).
+
+The other sources of truth are the code, the SQL, and the hand-maintained CSVs under
+`usl/ref/` - including `seasons.csv`, which maps each season year to its FootyStats
+season id and is itself only discoverable while subscribed.
 
 ## The single-writer constraint
 
@@ -28,13 +34,20 @@ afterwards. See
 
 ```
 make clean-db
-make backfill
+make backfill      # served from raw_archive/, no subscription needed
 make transform
 make train
 ```
 
-Losing this file costs you the backfill time and the accumulated run history in
-`run_log`, `model_metrics`, `predictions`, and `feature_importance`. The backfill
-you can redo. The history you cannot - it is a time series that only accumulates
-going forward, which is the argument for taking a copy before anything
-destructive.
+Deleting `usl.duckdb` is safe. The backfill replays from `raw_archive/` in seconds and
+needs no API key.
+
+What you cannot rebuild:
+
+- **`raw_archive/`**, once the subscription has lapsed. This is why it is committed.
+- **The accumulated run history** in `run_log`, `model_metrics`, `predictions`, and
+  `feature_importance`. A time series that only grows going forward - take a copy
+  before anything destructive.
+
+So `make clean-db` is cheap for the raw data and expensive for the history. If you have
+weeks of model metrics you care about, export them first.

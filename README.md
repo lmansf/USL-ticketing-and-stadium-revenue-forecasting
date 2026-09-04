@@ -42,12 +42,15 @@ line falls between measured, proxied, and instrumented-but-unvalidated.
 ## Architecture
 
 ```
-                       worldfootball.net
+                    FootyStats API (paid, 1 month)
                               |
-                      [ usl/scrape/ ]  HTTP + retry, disk cache, schema-drift guard
+                      [ usl/ingest/ ]  archive every response BEFORE parsing
                               |
                               v
-  RAW        raw_matches ................. exactly as scraped, never edited
+            data/raw_archive/ ........... committed to git. The only copy of the
+                              |           source data once the subscription lapses
+                              v
+  RAW        raw_matches ................. exactly as returned, never edited
                               |
                               |  club_aliases.csv  (checked in, load-bearing)
                               v
@@ -80,6 +83,10 @@ Everything runs on one machine against a single DuckDB file. Phase one is schedu
 by a plain weekly task on Tuesdays. Dagster and weather features are
 [phase two](#phase-two-deferred).
 
+With `FOOTYSTATS_API_KEY` unset, the whole pipeline runs from `data/raw_archive/`.
+That is the intended state after the subscription month ends, and it is how anyone
+cloning this repo runs it without paying for anything.
+
 ### The stack
 
 Two pieces of infrastructure - a DuckDB file on disk and Tableau - and Python
@@ -88,7 +95,8 @@ authenticates.
 
 | | |
 |---|---|
-| Scrape | `requests`, parsed with `pandas` (`lxml` as the HTML parser) |
+| Ingest | FootyStats JSON API via `requests`; key from `.env` via `python-dotenv` |
+| Archive | Raw responses to `data/raw_archive/`, committed. Written before parsing |
 | Store | DuckDB. One file, single writer |
 | Transform | SQL, executed inside DuckDB. Python reads the `.sql` file and hands it over |
 | Model | `xgboost`, with `scikit-learn` for the error metrics |
@@ -98,6 +106,10 @@ authenticates.
 
 `xgboost` is the only heavy install; it ships a compiled wheel. Dagster, the
 weather API, and everything cloud-shaped are out of scope for phase one.
+
+The FootyStats subscription is the one paid dependency and the one secret. It runs
+for a single month, which makes data acquisition the project's first hard deadline -
+see [phase 00](docs/phases/00-data-access-and-the-clock.md).
 
 ---
 
@@ -142,7 +154,7 @@ pip install -e .
 ```
 
 Working through the [MVP track](docs/mvp/) instead? `pip install -r requirements-mvp.txt`
-installs only the seven packages that track uses.
+installs only the eight packages that track uses.
 
 Verify the install:
 
@@ -153,7 +165,7 @@ make test          # partly red on a fresh clone, by design
 ```
 
 On a fresh clone, lint and typecheck are green and the test suite is not: it collects
-46 tests, of which some pass (the ones checking the feature definitions and the SQL
+56 tests, of which some pass (the ones checking the feature definitions and the SQL
 layer's wiring, which need no implementation), some fail with `NotImplementedError`,
 and the rest skip with a TODO naming what to build.
 
@@ -206,7 +218,8 @@ for Windows Task Scheduler are in [docs/mvp/05-mvp-schedule.md](docs/mvp/05-mvp-
 |   +-- logging_setup.py  Structured run logging. First-class, not an afterthought
 |   +-- db.py             DuckDB connection and write strategy
 |   +-- run.py            CLI entry point
-|   +-- scrape/           fetch.py (HTTP, retry, cache), parse.py (HTML to DataFrame)
+|   +-- ingest/           footystats.py (API client), archive.py (durable raw store)
+|   +-- scrape/           Attendance fallback. Delete once the API is confirmed
 |   +-- load/             raw.py - upsert into raw_matches
 |   +-- sql/              The three-tier SQL layer, one .sql file per model
 |   +-- transform/        SQL runner and data-quality checks
@@ -215,7 +228,8 @@ for Windows Task Scheduler are in [docs/mvp/05-mvp-schedule.md](docs/mvp/05-mvp-
 |   +-- export/           Tableau extract writer
 |   +-- weather/          Phase two stubs, Open-Meteo
 |   +-- ref/              Hand-maintained CSVs. Treat as code, not data
-+-- data/                 usl.duckdb lives here. Gitignored, rebuildable
++-- data/                 usl.duckdb (gitignored, rebuildable)
+|   +-- raw_archive/      Every raw API response. COMMITTED. Not regenerable
 +-- demo/                 Break-and-fix scenarios and saved HTML fixtures
 +-- tableau/              Workbook and extract output
 +-- tests/                Test stubs for the transformations with clear correctness criteria
@@ -269,21 +283,42 @@ gaps.
 
 ## Build order
 
-Steps 1 through 8 are free and unlimited. Step 9 starts a 14-day clock. Do not start
-it early.
+**There are two clocks, and the expensive one runs first.**
 
-1. Scrape one season, print the DataFrame. Nothing else.
-2. Backfill all nine into DuckDB with the idempotency guard.
-3. Staging plus club aliases, failing loudly on unmapped names.
-4. `int_standings`. This is the hardest SQL. Do it before the fun parts.
-5. Mart plus features.
-6. Both models, all three output tables.
-7. Tableau extracts, so the repo is useful to someone with no Tableau at all.
-8. Schedule the weekly task and let it run for two weeks so you have real history.
-9. **Then** start the Tableau Desktop trial and build the live dashboard.
-10. Record, write the delivery email, send.
+| Clock | Length | Lapsing costs you |
+|---|---|---|
+| FootyStats subscription | ~30 days | The data, permanently, unless archived |
+| Tableau Desktop trial | 14 days | Only the live connection; extracts still work |
 
-Weather and Dagster slot in after step 10, as phase two.
+Do not start them in the same month if you can avoid it. Pull and archive the data,
+let the subscription lapse, then start Tableau against the archive.
+
+**Before you subscribe** - free, unlimited, no clock running:
+
+1. Build the whole ingest client against the FootyStats `example` key (EPL 2018/19).
+   Auth, retry, archiving, parsing, the schema guard, the loader.
+2. Get `stg_matches` and the idempotency guard working on that one example season.
+
+**During the subscription month** - the clock is running, so pull broadly:
+
+3. `league-list`, find USL Championship, write every season id into `usl/ref/seasons.csv`.
+4. **Resolve the attendance question** ([phase 00](docs/phases/00-data-access-and-the-clock.md#the-open-question-you-must-resolve-on-day-one)).
+   It decides whether the scraper lives or dies.
+5. Backfill every season, plus league tables as a standings cross-check. Archive it all.
+6. Verify the pipeline runs end to end with the key removed. Then let it lapse.
+
+**After it lapses** - free again, everything served from the archive:
+
+7. Staging plus club aliases, failing loudly on unmapped names.
+8. `int_standings`. The hardest SQL. Do it before the fun parts.
+9. Mart plus features.
+10. Both models, all three output tables.
+11. Tableau extracts, so the repo is useful to someone with no Tableau at all.
+12. Schedule the weekly task. Note it can only refresh live data while subscribed.
+13. **Then** start the Tableau Desktop trial and build the live dashboard.
+14. Record, write the delivery email, send.
+
+Weather and Dagster slot in after step 14, as phase two.
 
 ---
 

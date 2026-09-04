@@ -23,7 +23,12 @@ data/*.duckdb.tmp
 data/*.duckdb.wal
 data/*.duckdb.lock
 
-# Scraper response cache (see docs/phases/01-scrape-to-raw.md)
+# NOTE: data/raw_archive/ is deliberately NOT ignored. It is the only copy of
+# the source data once the FootyStats subscription lapses, and it cannot be
+# regenerated at any price. Commit it.
+# See docs/phases/00-data-access-and-the-clock.md
+
+# Scratch response cache (see docs/phases/01-ingest-to-raw.md)
 .cache/
 data/cache/
 
@@ -37,7 +42,8 @@ tableau/extracts/*.hyper
 tableau/*.twbr
 tableau/Logs/
 
-# Local environment
+# Local environment. The FootyStats key is a paid credential - never commit it.
+# .env.example IS committed and holds the variable names with no values.
 .env
 .env.local
 

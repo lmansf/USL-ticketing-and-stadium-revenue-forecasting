@@ -21,7 +21,8 @@ where correctness has a clear, checkable definition:
 
 | File | Covers | Why it earns a test |
 |---|---|---|
-| `test_parse.py` | Schema drift guard, column-name validation | Fixed input, fixed expected failure |
+| `test_footystats.py` | Archive-before-parse, key handling, schema drift | Runs off a committed example-key fixture, no subscription needed |
+| `test_parse.py` | Fallback scraper's drift guard | Only if the attendance fallback survives |
 | `test_match_id.py` | `match_id` stability and uniqueness | Pure function of four fields |
 | `test_club_mapping.py` | Normalisation, unmapped detection | The silent failure mode - worth pinning down |
 | `test_standings.py` | Point-in-time correctness, tie-breaking, rank scope | Hand-checkable against a small fixture |
@@ -33,8 +34,8 @@ where correctness has a clear, checkable definition:
 
 ## What is not covered
 
-- **The scraper's network path.** Tested against saved fixtures instead. A test
-  that hits the live site is a test that fails when the site is slow.
+- **Live API calls.** Tested against committed archive fixtures instead. A test that
+  spends a request against a metered subscription is a test you will disable.
 - **Model accuracy.** There is no assertion to make. A test that pins MAE below a
   threshold fails the day the data changes, for no reason.
 - **The DuckDB lock guard.** Deliberately. It is the one unguided exercise, and
@@ -44,7 +45,11 @@ where correctness has a clear, checkable definition:
 
 ## Fixtures
 
-`conftest.py` provides an in-memory DuckDB connection and small hand-built
-frames. Saved HTML fixtures live in `demo/fixtures/` and are shared with the
-demo scripts, so a schema-drift fixture serves both the test suite and the
-recorded demo.
+`conftest.py` provides an in-memory DuckDB connection and small hand-built frames.
+
+API fixtures come from `data/raw_archive/`, which is committed - so the ingest tests
+run for anyone, forever, with no key. Pull one `example`-key season (EPL 2018/19,
+season id 1625) and the fixture exists. Its 380 matches are a row count you can check
+against the published season rather than against your own parser.
+
+Saved HTML fixtures in `demo/fixtures/` serve the fallback scraper, if it survives.

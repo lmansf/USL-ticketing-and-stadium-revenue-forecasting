@@ -4,7 +4,10 @@ Land it raw: no cleaning, no type coercion, no renaming. One row per match, as
 scraped, plus scraped_at and source_url. Cleaning happens in SQL, where it is
 reviewable in a diff and re-runnable without re-fetching.
 
-See docs/phases/01-scrape-to-raw.md
+ATTENDANCE FALLBACK ONLY - see usl/scrape/__init__.py. Delete this module
+if the FootyStats API carries per-match attendance.
+
+See docs/phases/01-ingest-to-raw.md
 """
 
 from __future__ import annotations
@@ -54,7 +57,7 @@ def pick_match_table(tables: list[pd.DataFrame]) -> pd.DataFrame:
     TODO: implement. Select on something structural - the presence of the
     expected column names - rather than on position.
     """
-    raise NotImplementedError("TODO: see docs/phases/01-scrape-to-raw.md")
+    raise NotImplementedError("TODO: see docs/phases/01-ingest-to-raw.md")
 
 
 def parse_season(html: str, season: int, source_url: str) -> pd.DataFrame:
@@ -77,9 +80,12 @@ def parse_season(html: str, season: int, source_url: str) -> pd.DataFrame:
     Raises:
         SchemaDriftError: When an expected column is absent.
 
-    TODO: implement. See docs/phases/01-scrape-to-raw.md, exercise 1.1.
+    TODO: implement. ATTENDANCE FALLBACK ONLY - see usl/scrape/__init__.py. Delete this module
+if the FootyStats API carries per-match attendance.
+
+See docs/phases/01-ingest-to-raw.md, exercise 1.1.
     """
-    raise NotImplementedError("TODO: see docs/phases/01-scrape-to-raw.md, exercise 1.1")
+    raise NotImplementedError("TODO: see docs/phases/01-ingest-to-raw.md, exercise 1.1")
 
 
 def add_match_id(df: pd.DataFrame) -> pd.DataFrame:
@@ -99,6 +105,9 @@ def add_match_id(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         The same frame with a match_id column added.
 
-    TODO: implement. See docs/phases/01-scrape-to-raw.md, exercise 1.2.
+    TODO: implement. ATTENDANCE FALLBACK ONLY - see usl/scrape/__init__.py. Delete this module
+if the FootyStats API carries per-match attendance.
+
+See docs/phases/01-ingest-to-raw.md, exercise 1.2.
     """
-    raise NotImplementedError("TODO: see docs/phases/01-scrape-to-raw.md, exercise 1.2")
+    raise NotImplementedError("TODO: see docs/phases/01-ingest-to-raw.md, exercise 1.2")

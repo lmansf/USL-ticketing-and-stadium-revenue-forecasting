@@ -9,7 +9,8 @@ usl/
 +-- logging_setup.py  Run and check logging. A feature, not an afterthought
 +-- db.py             DuckDB connection. Contains the one unguided exercise
 +-- run.py            CLI. One command per stage, plus 'weekly'
-+-- scrape/           fetch.py (HTTP, retry, cache), parse.py (HTML to DataFrame)
++-- ingest/           footystats.py (API client), archive.py (durable raw store)
++-- scrape/           Attendance fallback only. Delete once the API is confirmed
 +-- load/             raw.py - upsert into raw_matches
 +-- sql/              The three-tier SQL layer, one .sql per model
 +-- transform/        runner.py (materialise in order), checks.py (data quality)
@@ -37,6 +38,12 @@ upserts, because it must not lose history the source no longer serves. Every SQL
 model is `CREATE OR REPLACE`, because a full rebuild at this data size costs
 nothing and is idempotent for free. Being able to explain that distinction is
 worth more than either implementation.
+
+**Every API response is archived before it is parsed.** `data/raw_archive/` is
+committed and `data/usl.duckdb` is not, which is the opposite of the usual rule and
+is deliberate: the subscription runs for one month, and the archive is the only copy
+of the source data afterwards. With no API key set, the pipeline runs entirely from
+it. See [phase 00](../docs/phases/00-data-access-and-the-clock.md).
 
 **`db.py::connect_for_write` has no worked solution.** It is the one unguided
 exercise. The contract is in the docstring; the strategy is yours.

@@ -11,6 +11,10 @@ build it.
 
 One exercise has no solution block at all. That is deliberate.
 
+**Start with [phase 00](phases/00-data-access-and-the-clock.md)** whichever track you
+take. The data source is a paid subscription running for a single month, and phase 00
+is the one that stops that month being wasted.
+
 ---
 
 ## Two tracks
@@ -24,7 +28,7 @@ the version you show someone.
 | | |
 |---|---|
 | [00](mvp/README.md) | What the MVP cuts, and what it refuses to cut |
-| [01](mvp/01-mvp-scrape-to-duckdb.md) | One season, scraped, into DuckDB with a real primary key |
+| [01](mvp/01-mvp-ingest-to-duckdb.md) | One season from the API into DuckDB with a real primary key |
 | [02](mvp/02-mvp-sql-and-features.md) | Two SQL steps, league-wide rank, a thin feature set |
 | [03](mvp/03-mvp-models.md) | Both models, default hyperparameters, MAE logged |
 | [04](mvp/04-mvp-tableau.md) | CSV extracts into Tableau Public |
@@ -34,7 +38,8 @@ the version you show someone.
 
 | | | |
 |---|---|---|
-| [01](phases/01-scrape-to-raw.md) | Scrape to raw | Schema drift, idempotency, politeness |
+| [00](phases/00-data-access-and-the-clock.md) | Data access and the clock | The paid month, the archive rule, secrets |
+| [01](phases/01-ingest-to-raw.md) | Ingest to raw | FootyStats client, schema drift, idempotency |
 | [02](phases/02-duckdb-and-the-lock-problem.md) | DuckDB and the lock problem | Single-writer, run logging, write-to-temp-then-swap |
 | [03](phases/03-club-name-consistency.md) | Club name consistency | Nine seasons of rebrands, relocations, folds |
 | [04](phases/04-standings-as-of-match-date.md) | Standings as of match date | Point-in-time conference rank. The hardest SQL here |

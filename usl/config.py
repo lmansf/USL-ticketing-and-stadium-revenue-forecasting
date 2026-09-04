@@ -9,7 +9,13 @@ docs/reference/open-questions.md.
 from __future__ import annotations
 
 import datetime as dt
+import os
 from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Read .env if present. Absent is fine - see has_subscription() below.
+load_dotenv()
 
 # --------------------------------------------------------------------------
 # Paths
@@ -22,6 +28,9 @@ from pathlib import Path
 PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
 DATA_DIR: Path = PROJECT_ROOT / "data"
 CACHE_DIR: Path = DATA_DIR / "cache"
+# Committed, not gitignored. The only copy of the source data once the
+# subscription lapses. See docs/phases/00-data-access-and-the-clock.md
+ARCHIVE_DIR: Path = DATA_DIR / "raw_archive"
 LOG_DIR: Path = PROJECT_ROOT / "logs"
 SQL_DIR: Path = Path(__file__).resolve().parent / "sql"
 REF_DIR: Path = Path(__file__).resolve().parent / "ref"
@@ -36,15 +45,16 @@ DB_TMP_PATH: Path = DATA_DIR / "usl.duckdb.tmp"
 # Seasons
 # --------------------------------------------------------------------------
 
-# TODO: verify the available season range on the source site and fill this in.
-# The guide says "all nine available seasons" without naming them, deliberately -
-# confirm it yourself rather than trusting a value written here.
-# See docs/reference/open-questions.md#which-nine-seasons
-SEASONS: list[int] = []
+# FootyStats addresses a season id, not a year. The mapping from "USL
+# Championship 2019" to its id is discovered from the league-list endpoint and
+# written into usl/ref/seasons.csv, which is loaded at runtime.
+#
+# TODO: run league-list during the subscription window and fill in seasons.csv.
+# You cannot rebuild that mapping after access lapses.
+# See docs/reference/open-questions.md#season-ids
+SEASONS_CSV: Path = REF_DIR / "seasons.csv"
 
 # TODO: the season currently in progress, or None outside the season.
-# Used to decide whether a cached page may be reused (a completed season never
-# changes; the current one changes weekly).
 CURRENT_SEASON: int | None = None
 
 # TODO: approximate season boundaries, used by the freshness check to avoid
@@ -54,28 +64,47 @@ SEASON_END_MD: tuple[int, int] = (11, 15)
 
 
 # --------------------------------------------------------------------------
-# Scraping
+# FootyStats API
+#
+# The key is a PAID credential read from .env. It is never committed, never
+# logged, and never written into an archive filename.
+#
+# Leaving it empty is a supported mode, not a broken one: the pipeline then runs
+# entirely from ARCHIVE_DIR, which is how the finished repo works for anyone
+# without a subscription.
 # --------------------------------------------------------------------------
 
-# TODO: set a real User-Agent that identifies you and gives a contact.
-USER_AGENT: str = "usl-attendance-research/0.1 (contact: TODO)"
+FOOTYSTATS_API_KEY: str = os.environ.get("FOOTYSTATS_API_KEY", "")
+
+# FootyStats serves the literal key "example" for the English Premier League
+# 2018/19 season. A complete, real season of the same response shape as USL, for
+# nothing. Build and test the entire client against this before subscribing.
+EXAMPLE_KEY: str = "example"
+EXAMPLE_SEASON_ID: int = 1625
 
 REQUEST_TIMEOUT_SECONDS: float = 30.0
 
-# Politeness delay between requests during the backfill.
-REQUEST_DELAY_SECONDS: float = 2.0
+# The entry tier allows roughly 1800 requests an hour, so this delay is mostly
+# ceremonial - it keeps you far below the ceiling and is politer than bursting.
+# The constraint that actually matters is that the window closes, which the
+# archive handles rather than the throttle.
+REQUEST_DELAY_SECONDS: float = 1.0
 
-# Transient failures only. A 404 is not transient and must not be retried -
-# see docs/phases/09-break-and-fix.md, scenario D2.
+# Transient failures only. A 401 means the key is wrong or the subscription has
+# lapsed; a 404 means the endpoint or season id is wrong. Neither improves with
+# waiting. See docs/phases/09-break-and-fix.md, scenario D2.
 FETCH_MAX_ATTEMPTS: int = 3
 FETCH_BACKOFF_BASE_SECONDS: float = 2.0
 
-# Column names the parser requires. Missing raises; extra warns.
-# See docs/phases/01-scrape-to-raw.md, exercise 1.1.
-# TODO: confirm against the live page before relying on these.
-EXPECTED_COLUMNS: frozenset[str] = frozenset(
-    {"date", "home", "away", "score", "attendance"}
-)
+
+def has_subscription() -> bool:
+    """Whether an API key is available for live requests.
+
+    False is a normal, supported state - it means every request must be served
+    from the archive. Code that needs to fetch should say so with
+    NoSubscriptionError rather than failing with an opaque 401.
+    """
+    return bool(FOOTYSTATS_API_KEY)
 
 
 # --------------------------------------------------------------------------
