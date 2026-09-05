@@ -538,6 +538,65 @@ def load_aliases(con: duckdb.DuckDBPyConnection, path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+NEEDED_RAW_COLUMNS = {
+    "match_id": "primary key, so re-running upserts instead of duplicating",
+    "season": "partitions the standings window",
+    "date": "orders the standings and lag windows. Without it there is no point-in-time",
+    "home_raw": "joins to club_aliases",
+    "away_raw": "joins to club_aliases",
+    "home_goals": "points, goal difference, goals for",
+    "away_goals": "points, goal difference, goals for",
+    "attendance": "the target variable",
+}
+
+
+def explain_missing_raw_matches(con: duckdb.DuckDBPyConnection) -> None:
+    """Fail with something actionable when raw_matches is absent.
+
+    A database built for MVP 01's attendance question usually carries a table that
+    is close but not sufficient - enough to answer "is attendance populated", not
+    enough to reconstruct a league table. Say which columns are missing and what
+    each one is for, rather than just reporting a missing table.
+    """
+    tables = [r[0] for r in con.sql("SELECT table_name FROM duckdb_tables()").fetchall()]
+    lines = [f"no raw_matches table (found: {tables or 'none'})."]
+
+    # If some other table looks like match data, diagnose it specifically.
+    for name in tables:
+        cols = {r[0] for r in con.sql(f'DESCRIBE "{name}"').fetchall()}
+        if "attendance" not in cols:
+            continue
+        missing = [c for c in NEEDED_RAW_COLUMNS if c not in cols]
+        if not missing:
+            continue
+        lines += [
+            "",
+            f"'{name}' looks like match data but cannot build a league table.",
+            f"  has:     {sorted(cols)}",
+            "  missing:",
+        ]
+        lines += [f"    {c:<12} {NEEDED_RAW_COLUMNS[c]}" for c in missing]
+        lines += [
+            "",
+            "  Every one of these is in the league-matches payload already:",
+            "    season -> season, date -> date_unix, home_goals -> homeGoalCount,",
+            "    away_goals -> awayGoalCount, home_raw -> homeID, away_raw -> awayID",
+            "  They were just not carried into the table.",
+        ]
+        break
+
+    lines += [
+        "",
+        "Two ways forward:",
+        "  1. Skip the intermediate table entirely (works today):",
+        "       --from-json league-matches_season_1.json",
+        "  2. Carry the extra fields when you build the raw table, then --db works.",
+        "",
+        "  --seed-demo exercises the SQL on synthetic data with no source at all.",
+    ]
+    raise SystemExit("\n".join(lines))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__,
@@ -553,12 +612,18 @@ def main(argv: list[str] | None = None) -> int:
         help="Build raw_matches from an archived league-matches payload.",
     )
     parser.add_argument(
-        "--aliases", type=Path, default=DEFAULT_ALIASES, help="club_aliases.csv path."
+        "--aliases",
+        type=Path,
+        default=None,
+        help="club_aliases.csv to use instead of a club_aliases table in the database.",
     )
     parser.add_argument(
         "--show", type=int, default=8, help="Rows of the mart to print. 0 for none."
     )
     args = parser.parse_args(argv)
+    args.aliases_explicit = args.aliases is not None
+    if args.aliases is None:
+        args.aliases = DEFAULT_ALIASES
 
     con = duckdb.connect(args.db)
 
@@ -573,17 +638,22 @@ def main(argv: list[str] | None = None) -> int:
             "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'raw_matches'",
         )
         if not exists:
-            tables = [
-                r[0]
-                for r in con.sql("SELECT table_name FROM duckdb_tables()").fetchall()
-            ]
-            raise SystemExit(
-                f"no raw_matches table (found: {tables or 'none'}).\n"
-                "  --seed-demo      synthetic data, exercises the SQL on its own\n"
-                "  --from-json P    build it from an archived league-matches payload\n"
-                "  --db P           point at a database that already has one"
-            )
-        load_aliases(con, args.aliases)
+            explain_missing_raw_matches(con)
+
+        # Use a club_aliases table already in the database if there is one. Only
+        # fall back to the CSV when the database has none, or when --aliases was
+        # passed explicitly. Clobbering a mapping the database already carries is
+        # how you get twenty "unmapped club" errors for clubs that were mapped.
+        has_aliases = scalar(
+            con,
+            "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'club_aliases'",
+        )
+        if args.aliases_explicit or not has_aliases:
+            load_aliases(con, args.aliases)
+        else:
+            n = scalar(con, "SELECT count(*) FROM club_aliases")
+            print(f"  using the club_aliases table already in the database ({n} rows)")
+            print("      pass --aliases to override it with a CSV")
 
     print("build")
     con.execute(SQL_STG_MATCHES)

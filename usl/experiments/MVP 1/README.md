@@ -54,6 +54,75 @@ named cause.
 
 ---
 
+## Running it on `raw.db`
+
+**You cannot yet, and the script refuses on purpose.** `raw_table` has `id`,
+`home_name`, `away_name`, `stadium_name`, `attendance` - enough to answer "is
+attendance populated", not enough to reconstruct a league table. Missing: `season`,
+`date`, `home_goals`, `away_goals`. Without dates and goals there are no standings,
+and standings are most of MVP 02.
+
+Point `--db` at it and the error names every missing column and what each is for.
+
+### Path 1 - skip `raw.db` (works right now)
+
+```
+cd "usl/experiments/MVP 1"
+python mvp02_sql_and_features.py --from-json league-matches_season_1.json
+```
+
+Builds `raw_matches` from the payload in memory. Nothing to rebuild, nothing to
+migrate. Verified: 380 rows, all checks pass.
+
+### Path 2 - carry the extra fields, then `--db` works
+
+Every field is already in the payload - they were just not selected. In
+`create_raw_tables.py`, widen `REQUIRED` and the row dict:
+
+```python
+REQUIRED = {"id", "season", "date_unix", "homeID", "awayID",
+            "homeGoalCount", "awayGoalCount", "attendance",
+            "home_name", "away_name", "stadium_name"}
+
+new_row = {
+    "match_id":   f"fs:{d['id']}",                  # namespaced provider id
+    "season":     int(str(d["season"])[:4]),        # "2018/2019" -> 2018
+    "date":       datetime.fromtimestamp(d["date_unix"], timezone.utc).date().isoformat(),
+    "home_raw":   str(d["homeID"]),                 # the id, NOT home_name
+    "away_raw":   str(d["awayID"]),
+    "home_goals": d["homeGoalCount"],
+    "away_goals": d["awayGoalCount"],
+    "attendance": d["attendance"],
+    "stadium_name": d["stadium_name"],
+    "ingested_at": datetime.now(timezone.utc),
+}
+```
+
+Name the table `raw_matches`, and use `CREATE OR REPLACE TABLE` rather than
+`CREATE TABLE IF NOT EXISTS` - see the note in Open items about the `last_updated`
+column that silently never arrived.
+
+Join on `homeID`, not `home_name`. The payload's name is the club's *current* name, so
+a 2017 match would arrive under a 2026 brand.
+
+Then either put a `club_aliases` table in the same database, or pass `--aliases`:
+
+```
+python mvp02_sql_and_features.py --db raw.db
+python mvp02_sql_and_features.py --db raw.db --aliases ../../ref/club_aliases.csv
+```
+
+The script uses a `club_aliases` table already in the database if there is one, and
+only falls back to the CSV when there is none or when `--aliases` is passed. Verified
+on a rebuilt `raw.db` with these columns: 380 rows, all checks pass.
+
+> **`--db` writes into that file.** It creates `stg_matches` and `mart_match_features`
+> in whatever database you point at. Since `raw.db` is committed, that shows up as a
+> git diff. Another reason the archive rather than the database is the thing worth
+> committing.
+
+---
+
 ## What it builds
 
 ```
