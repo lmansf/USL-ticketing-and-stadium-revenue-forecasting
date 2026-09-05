@@ -6,6 +6,10 @@ Workspace for the first pass at the MVP. Reference docs live under
 | File | What |
 |---|---|
 | `mvp02_sql_and_features.py` | [MVP 02](../../../docs/mvp/02-mvp-sql-and-features.md) as one runnable file on DuckDB |
+| `write_raw.py` | Fetches and archives a league-matches payload |
+| `create_raw_tables.py` | Drift guard, coverage check, and a raw table in `raw.db` |
+| `display_raw.py` | Reads it back |
+| `league-matches_season_1.json` | The archived response. EPL 2018/19 via the free `example` key |
 
 ---
 
@@ -28,6 +32,19 @@ Against real data once `raw_matches` is populated:
 ```
 python "usl/experiments/MVP 1/mvp02_sql_and_features.py" --db data/usl.duckdb
 ```
+
+Straight from an archived payload, which is the shortest path from MVP 01 to MVP 02:
+
+```
+python "usl/experiments/MVP 1/mvp02_sql_and_features.py" \
+    --from-json "usl/experiments/MVP 1/league-matches_season_1.json"
+```
+
+That builds `raw_matches` from the payload directly, so nothing has to be staged
+through `raw.db` first. It also derives a starter `club_aliases` from the payload -
+provider id to a slug of the club's *current* name. Review it by hand before trusting
+it: current names are wrong for historical seasons, which is the whole point of
+[phase 03](../../../docs/phases/03-club-name-consistency.md).
 
 Options: `--aliases` to point at a different `club_aliases.csv`, `--show N` to change
 how many mart rows print, `--show 0` for none.
@@ -138,22 +155,39 @@ Fill in as you go. This is the part worth reviewing.
 
 | | |
 |---|---|
-| Date run | |
-| All checks passed? | |
-| Anything surprising | |
+| Date run | 2026-09-05 |
+| All checks passed? | Yes, 56 matches / 8 clubs |
+| Anything surprising | Yes - the first demo scheduler let clubs play twice a day. See the checks section above |
 
-### Real data run
+### Real data run - EPL 2018/19, free `example` key
 
 | | |
 |---|---|
-| Date run | |
-| Season | |
-| `raw_matches` rows | |
-| `stg_matches` rows | |
-| `mart_match_features` rows | |
-| Unmapped clubs found | |
-| Final table matched published table? | |
-| Nulls in `last_home_gate` / `home_gate_ma3` (should equal club count) | |
+| Date run | 2026-09-05 |
+| Source | `league-matches_season_1.json` (season id 1625) |
+| `raw_matches` rows | 380 |
+| `stg_matches` rows | 380 |
+| `mart_match_features` rows | 380 |
+| Unmapped clubs found | 0, of 20 |
+| Nulls in `last_home_gate` / `home_gate_ma3` | 20 and 20 - exactly one per club, correct |
+| **Final table vs published** | **Top 6 match exactly, points and goal difference** |
+
+The published-table check is worth spelling out, because it is Exercise M2.1 done for
+real rather than against a fixture:
+
+| Club | Computed | Published 2018/19 |
+|---|---|---|
+| Manchester City | 98 pts, +72 | 98 pts, +72 |
+| Liverpool | 97 pts, +67 | 97 pts, +67 |
+| Chelsea | 72 pts, +24 | 72 pts, +24 |
+| Tottenham | 71 pts, +28 | 71 pts, +28 |
+| Arsenal | 70 pts, +22 | 70 pts, +22 |
+| Manchester United | 66 pts, +11 | 66 pts, +11 |
+
+Points and goal difference both, against a table the code has never seen. That is
+external validation of the standings reconstruction, not a self-check.
+
+**Still to do on real data:** run this against a USL season. Everything above is EPL.
 
 ### Attendance gate
 
@@ -164,13 +198,18 @@ python scripts/check_attendance_coverage.py                    # free, EPL examp
 python scripts/check_attendance_coverage.py --season-id <usl>  # the one that counts
 ```
 
-| | Example key | Real USL season |
+| | Example key (EPL 2018/19) | Real USL season |
 |---|---|---|
-| Date run | | |
-| Field found | | |
-| Share populated | | |
-| Median | | |
-| Verdict | | |
+| Date run | 2026-09-05 | |
+| Field found | `attendance` | |
+| Share populated | **380/380, 100%** | |
+| Median | 31,957 | |
+| Min / max | 9,980 / 81,332 | |
+| Verdict | **PASS** - the field exists and is fully populated | |
+
+Half the gate is now answered: **`league-matches` carries a per-match `attendance`
+field, and for the EPL it is 100% populated** with plausible values. No match-detail
+call is needed for it.
 
 An EPL pass proves the schema supports attendance. It does **not** prove FootyStats
 holds it for USL - gate figures are far better covered for the major European leagues.
@@ -178,7 +217,20 @@ Only the right-hand column decides the project.
 
 ### Open items for MVP 3
 
--
+- **Run the attendance gate on a USL season.** The only thing still blocking. EPL
+  coverage says nothing about USL - a median of 31,957 is Premier League, and USL gates
+  run in the low thousands.
+- `raw.db` is committed (536 KB). The project's convention is that databases are build
+  products and only `data/raw_archive/` is durable - the JSON here is the thing worth
+  keeping. Consider gitignoring `*.db` under experiments.
+- `create_raw_tables.py` uses `CREATE TABLE IF NOT EXISTS ... AS SELECT *`, which is not
+  idempotent in the sense MVP 01 needs: re-running never updates. It has already bitten
+  once - the DataFrame builds a `last_updated` column that is **not** in `raw.db`,
+  because the table was created before that column existed and `IF NOT EXISTS` silently
+  kept the old schema. `CREATE OR REPLACE`, or a primary key and an upsert, fixes it.
+- `write_raw.py` sends `league_id=1625` where 1625 is a season id, and names the file
+  `season_1`. Worth reconciling before there are nine of them - phase 00 leans on
+  archive filenames being readable enough to tell what you have not pulled yet.
 
 ---
 

@@ -56,6 +56,9 @@ markers = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# usl/experiments/ is a scratch workspace for working through the guide, not
+# package code. Exploratory scripts are not held to the package's standards.
+extend-exclude = ["usl/experiments"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
@@ -66,6 +69,9 @@ warn_unused_ignores = true
 disallow_untyped_defs = true
 # Stub modules raise NotImplementedError by design; do not flag missing returns there.
 warn_no_return = false
+
+# Scratch workspace, see the ruff note above.
+exclude = ["usl/experiments/"]
 
 [[tool.mypy.overrides]]
 module = ["duckdb.*", "xgboost.*", "pantab.*"]

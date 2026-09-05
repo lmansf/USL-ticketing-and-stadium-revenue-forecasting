@@ -33,7 +33,9 @@ Cuts taken here, all deliberate and all documented in the guide:
 from __future__ import annotations
 
 import argparse
+import json
 import random
+import re
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -437,6 +439,89 @@ def seed_demo(con: duckdb.DuckDBPyConnection, season: int = 2024, n_clubs: int =
     )
 
 
+def load_from_json(con: duckdb.DuckDBPyConnection, path: Path) -> None:
+    """Build raw_matches and a starter club_aliases from a league-matches payload.
+
+    Bridges MVP 01's archived response straight into MVP 02 without needing an
+    intermediate raw table, so the SQL can be exercised on real data today.
+
+    Field mapping, all confirmed present in a real response:
+
+        match_id    "fs:" + id          namespaced provider id
+        season      season              "2018/2019" -> 2018, the starting year
+        date        date_unix           UTC date
+        home_raw    homeID              the provider's club id, not the name
+        away_raw    awayID              names change; ids do not
+        home_goals  homeGoalCount
+        away_goals  awayGoalCount
+        attendance  attendance
+
+    Joining on homeID rather than home_name is the important choice. The payload's
+    home_name is the club's CURRENT name, so a 2017 match would arrive under a 2026
+    brand - see docs/phases/03-club-name-consistency.md.
+    """
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    data = payload.get("data")
+    if not data:
+        raise SystemExit(f"no 'data' array in {path.name}; top-level keys: {sorted(payload)}")
+
+    required = {"id", "season", "date_unix", "homeID", "awayID",
+                "homeGoalCount", "awayGoalCount", "attendance"}
+    missing = required - set(data[0])
+    if missing:
+        raise SystemExit(
+            f"payload is missing {sorted(missing)}.\n"
+            f"  Available: {sorted(data[0])[:20]} ..."
+        )
+
+    rows = []
+    for d in data:
+        season_txt = str(d["season"])
+        year_match = re.match(r"(\d{4})", season_txt)
+        year = int(year_match.group(1)) if year_match else 0
+        rows.append(
+            (
+                f"fs:{d['id']}",
+                year,
+                str(duckdb.sql(f"SELECT to_timestamp({int(d['date_unix'])})::DATE").fetchone()[0]),
+                str(d["homeID"]),
+                str(d["awayID"]),
+                str(d["homeGoalCount"]),
+                str(d["awayGoalCount"]),
+                str(d["attendance"]),
+            )
+        )
+
+    con.execute("""
+        CREATE OR REPLACE TABLE raw_matches (
+            match_id VARCHAR PRIMARY KEY, season INTEGER, date VARCHAR,
+            home_raw VARCHAR, away_raw VARCHAR,
+            home_goals VARCHAR, away_goals VARCHAR, attendance VARCHAR
+        )
+    """)
+    con.executemany("INSERT INTO raw_matches VALUES (?, ?, ?, ?, ?, ?, ?, ?)", rows)
+
+    # Starter alias table derived from the payload. NOT a substitute for the
+    # hand-maintained CSV - it maps each provider id to a slug of that club's
+    # current name, which is a starting point to review, not an answer.
+    names: dict[str, str] = {}
+    for d in data:
+        names.setdefault(str(d["homeID"]), str(d.get("home_name", d["homeID"])))
+        names.setdefault(str(d["awayID"]), str(d.get("away_name", d["awayID"])))
+    aliases = [
+        (cid, re.sub(r"[^a-z0-9]+", "_", nm.lower()).strip("_"), "derived from payload")
+        for cid, nm in names.items()
+    ]
+    con.execute(
+        "CREATE OR REPLACE TABLE club_aliases "
+        "(raw_name VARCHAR, club_id VARCHAR, note VARCHAR)"
+    )
+    con.executemany("INSERT INTO club_aliases VALUES (?, ?, ?)", aliases)
+    print(f"  loaded {len(rows)} matches and {len(aliases)} clubs from {path.name}")
+    print("      club_aliases was DERIVED from the payload - review it by hand before")
+    print("      trusting it. Names are current names, so historical seasons will be off.")
+
+
 def load_aliases(con: duckdb.DuckDBPyConnection, path: Path) -> None:
     """Register the hand-maintained alias CSV as a table."""
     if not path.exists():
@@ -463,6 +548,11 @@ def main(argv: list[str] | None = None) -> int:
         "--seed-demo", action="store_true", help="Generate synthetic data first."
     )
     parser.add_argument(
+        "--from-json",
+        type=Path,
+        help="Build raw_matches from an archived league-matches payload.",
+    )
+    parser.add_argument(
         "--aliases", type=Path, default=DEFAULT_ALIASES, help="club_aliases.csv path."
     )
     parser.add_argument(
@@ -475,15 +565,23 @@ def main(argv: list[str] | None = None) -> int:
     print("setup")
     if args.seed_demo:
         seed_demo(con)
+    elif args.from_json:
+        load_from_json(con, args.from_json)
     else:
         exists = scalar(
             con,
             "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'raw_matches'",
         )
         if not exists:
+            tables = [
+                r[0]
+                for r in con.sql("SELECT table_name FROM duckdb_tables()").fetchall()
+            ]
             raise SystemExit(
-                "no raw_matches table. Run MVP 01 first, or pass --seed-demo to "
-                "generate synthetic data and exercise the SQL on its own."
+                f"no raw_matches table (found: {tables or 'none'}).\n"
+                "  --seed-demo      synthetic data, exercises the SQL on its own\n"
+                "  --from-json P    build it from an archived league-matches payload\n"
+                "  --db P           point at a database that already has one"
             )
         load_aliases(con, args.aliases)
 
