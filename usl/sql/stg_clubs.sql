@@ -1,23 +1,28 @@
--- stg_clubs: one row per canonical club, with conference by season.
+-- stg_clubs: one row per club-season, with conference and display name.
 --
 -- Tier: staging
 -- Doc:  docs/phases/03-club-name-consistency.md
 --
--- Sources: club_aliases (usl/ref/club_aliases.csv)
---          club_conference (usl/ref/club_conference.csv)
+-- Source: club_conference (usl/ref/club_conference.csv), read with every
+-- column as VARCHAR. Typing happens here.
 --
--- TODO: implement.
+-- Conference membership is NOT a constant. Clubs have moved between
+-- conferences across seasons and the number of conferences has itself changed,
+-- so the grain is the club-season. Do not read the current season's
+-- conferences and apply them backwards - that is wrong for every club that
+-- moved, and it is wrong silently.
 --
--- Shape to produce, one row per (club_id, season):
---   club_id      VARCHAR   canonical, stable forever - a club that rebrands
---                          keeps its club_id and gains a new raw_name row
---   season       INTEGER
---   conference   VARCHAR   see docs/reference/open-questions.md#conference-membership
---   display_name VARCHAR   for the dashboard
+-- The display name lives on the same row for the same reason: the API's name
+-- for a club is its CURRENT name, and a 2017 match should not render under a
+-- 2026 brand.
 --
--- Conference membership is NOT a constant. Clubs have moved between conferences
--- across seasons and the number of conferences has itself changed. Do not read
--- the current season's conferences and apply them backwards - that is wrong for
--- every club that moved, and it is wrong silently.
+-- Columns: club_id VARCHAR, season INTEGER, conference VARCHAR,
+--          display_name VARCHAR
 
-SELECT 1 AS todo_replace_me WHERE FALSE;
+SELECT
+    club_id,
+    CAST(season AS INTEGER) AS season,
+    conference,
+    display_name
+FROM club_conference
+ORDER BY season, conference, club_id

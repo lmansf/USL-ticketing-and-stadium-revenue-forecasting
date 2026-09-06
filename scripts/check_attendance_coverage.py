@@ -21,6 +21,10 @@ that actually matters - is it populated for THIS league:
 Read the verdict carefully. There are three outcomes, not two: the field can be
 absent, present and populated, or present and mostly empty. The third is the
 most likely and the most dangerous, because a naive check reports success.
+
+A response already under data/raw_archive/ is served from there rather than
+requested again, so the script keeps answering after the subscription lapses
+and never spends a request twice. Pass --live to bypass the archive.
 """
 
 from __future__ import annotations
@@ -31,10 +35,13 @@ import os
 import sys
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 BASE_URL = "https://api.football-data-api.com"
 EXAMPLE_KEY = "example"
 EXAMPLE_SEASON_ID = 1625  # EPL 2018/19, served by the example key
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 # Field names that plausibly carry a per-match gate figure. The API's naming is
 # not documented for this, so cast a wide net and report whatever is found.
@@ -51,6 +58,28 @@ def fetch(endpoint: str, key: str, **params: object) -> dict:
     url = f"{BASE_URL}/{endpoint}?{query}"
     with urllib.request.urlopen(url, timeout=30) as resp:  # noqa: S310
         return json.loads(resp.read().decode("utf-8"))
+
+
+def read_from_archive(endpoint: str, params: dict[str, object]) -> tuple[dict | None, Path | None]:
+    """The archived response for this request, if there is one.
+
+    The archive is the only copy of the source data once the subscription
+    lapses, so this script answers from it whenever it can. The import is
+    guarded: this file must stay runnable on its own, and if the package is not
+    importable the script simply goes to the network as it always did.
+
+    Returns:
+        (payload, path) when archived, (None, None) otherwise.
+    """
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+    try:
+        from usl.ingest import archive
+    except ImportError:
+        return None, None
+    if not archive.is_archived(endpoint, params):
+        return None, None
+    return archive.read_archived(endpoint, params), archive.archive_path(endpoint, params)
 
 
 def find_attendance_fields(match: dict) -> list[str]:
@@ -87,22 +116,39 @@ def main() -> int:
         default=os.environ.get("FOOTYSTATS_API_KEY") or EXAMPLE_KEY,
         help="API key. Defaults to FOOTYSTATS_API_KEY, then the public example key.",
     )
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        help="Request the season even if its response is already under data/raw_archive/.",
+    )
     args = parser.parse_args()
 
     using_example = args.key == EXAMPLE_KEY
     print(f"season_id={args.season_id}  key={'example (free)' if using_example else 'yours'}")
     print()
 
-    try:
-        payload = fetch("league-matches", args.key, season_id=args.season_id)
-    except Exception as exc:  # noqa: BLE001 - this is a diagnostic script
-        print(f"REQUEST FAILED: {exc}")
-        print()
-        print("A 401 means the key is wrong or the subscription has lapsed.")
-        print("A 404 usually means the season id is wrong - get ids from league-list.")
-        print("A 403 on a tunnel/proxy line is your network blocking the host, not")
-        print("the API rejecting you - try from an unproxied connection.")
-        return 2
+    payload = None
+    if not args.live:
+        payload, archived = read_from_archive("league-matches", {"season_id": args.season_id})
+        if payload is not None and archived is not None:
+            try:
+                shown = archived.relative_to(PROJECT_ROOT)
+            except ValueError:
+                shown = archived
+            print(f"served from {shown}")
+            print()
+
+    if payload is None:
+        try:
+            payload = fetch("league-matches", args.key, season_id=args.season_id)
+        except Exception as exc:  # noqa: BLE001 - this is a diagnostic script
+            print(f"REQUEST FAILED: {exc}")
+            print()
+            print("A 401 means the key is wrong or the subscription has lapsed.")
+            print("A 404 usually means the season id is wrong - get ids from league-list.")
+            print("A 403 on a tunnel/proxy line is your network blocking the host, not")
+            print("the API rejecting you - try from an unproxied connection.")
+            return 2
 
     matches = payload.get("data") or []
     if not matches:
