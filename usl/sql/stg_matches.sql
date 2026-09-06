@@ -8,6 +8,12 @@
 --      as VARCHAR because raw means raw. Goals and attendance are only kept on
 --      played matches; an attendance of 0 or below is the source's way of
 --      saying "unknown" and becomes NULL rather than a real gate of zero.
+--      is_played is status 'complete' compared lower-cased and trimmed, and
+--      checks.played_rows_consistent stops the run on a status value this
+--      file has never seen, so a renamed status cannot quietly un-play a
+--      season. is_void marks a fixture that will never be played
+--      (config.VOID_MATCH_STATUSES): it stays here, and nothing downstream
+--      counts it.
 --   2. Canonical club ids, via a LEFT JOIN to club_aliases on the NORMALISED raw
 --      string (whitespace collapsed, same rule as reference.normalize_club_key).
 --      LEFT JOIN, not INNER - the inner join drops unmapped rows and tells you
@@ -20,7 +26,7 @@
 -- NOT here: standings, lags, or anything requiring a window over other
 -- matches. Those belong in int_standings and mart_match_features.
 --
--- Columns: match_id, season, season_id, date, kickoff_utc, status, is_played,
+-- Columns: match_id, season, season_id, date, kickoff_utc, status, is_played, is_void,
 --          home_raw, away_raw, home_club_id, away_club_id, home_goals,
 --          away_goals, attendance, is_covid_affected, day_of_week, month,
 --          is_weekend, is_midweek
@@ -48,11 +54,20 @@ played AS (
     SELECT
         t.*,
         COALESCE(
-            t.status = 'complete'
+            lower(trim(t.status)) = 'complete'
             AND t.home_goals_raw IS NOT NULL
             AND t.away_goals_raw IS NOT NULL,
             FALSE
-        ) AS is_played
+        ) AS is_played,
+        -- a fixture the provider says will never be played. Kept, flagged, and
+        -- left out of everything downstream that counts fixtures.
+        COALESCE(
+            list_contains(
+                string_split((SELECT void_statuses FROM ref_config), ','),
+                lower(trim(t.status))
+            ),
+            FALSE
+        ) AS is_void
     FROM typed t
 )
 SELECT
@@ -63,6 +78,7 @@ SELECT
     p.kickoff_utc,
     p.status,
     p.is_played,
+    p.is_void,
     p.home_raw,
     p.away_raw,
     h.club_id                                                               AS home_club_id,

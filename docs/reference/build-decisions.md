@@ -45,7 +45,30 @@ API returns the request metadata without it.
 
 The key never reaches a log line by construction (the client logs endpoint,
 status, and byte count, never a URL) and by a `RedactSecretsFilter` on every log
-handler as a second guard. `tests/test_footystats.py` asserts both.
+handler as a second guard. `tests/test_footystats.py` asserts both. The filter
+leaves the public `example` key alone, so the archive-only logs stay readable.
+
+**Archive-before-parse, made safe to force.** The guide's rule is that a body is
+written before it is parsed. Written where matters: a fresh body lands in
+`<slot>.partial`, is parsed, and only a body that is JSON and does not say
+`"success": false` replaces the archived copy, in one `os.replace`. A body that
+fails either check is moved to `<slot>.bad` - kept for inspection, never served
+as a hit - and whatever was archived before is untouched. So `--force` against a
+lapsed key cannot overwrite the only copy of a season with an error envelope, and a
+crash mid-write leaves a `.partial` that is never read rather than a half file that
+is. A zero-byte file is not a hit either. `.partial` and `.bad` are gitignored;
+the `archive` command counts quarantined files so they get looked at.
+
+**Dated snapshots for a live season.** A completed season is one archive entry and
+is never re-requested. A season still being played has to be re-requested every
+week, and `--force` is the wrong tool for that because it overwrites. So the weekly
+ingest passes the run date as a `snapshot`, which archives the pull as
+`league-matches_season_id_<id>_as_of_<date>.json` beside the others - one entry per
+pull, nothing overwritten, and the date is not sent to the API. Without a key the
+newest snapshot is served, or the undated backfill copy if there is none, with a
+warning that says nothing is being refreshed. `scripts/check_attendance_coverage.py`
+goes through the same client, so a coverage survey during the paid month is
+archived too rather than spent.
 
 ## Phase 01 - the raw table and `match_id`
 
@@ -66,9 +89,17 @@ before the write. "Unchanged" means the key exists and none of `date_unix`,
 excluded on purpose because it changes every run. A batch is deduplicated on
 `match_id` (last row wins) before it reaches the database.
 
-**Retries.** Connection errors and 5xx are retried with backoff; 401, 403, 404
-and other 4xx are not. The first attempt against an unarchived request with no key
-raises `NoSubscriptionError` before any network call.
+**Retries.** Connection errors, a body cut off mid-transfer
+(`ChunkedEncodingError`, `ContentDecodingError`) and 5xx are retried with backoff;
+401, 403, 404 and other 4xx are not. The first attempt against an unarchived
+request with no key raises `NoSubscriptionError` before any network call.
+
+**Two refusals in the loader.** A natural-key `match_id` is never built from a null
+part: a row missing its date or a club string raises rather than hashing the word
+`None` into a key that would collide with every other such row. And a frame that
+carries the same field under both its API name and its raw name (`homeID` and
+`home_raw`, say) is refused rather than silently picking one, because that is what
+a half-converted second source looks like.
 
 ## Phase 02 - the lock
 
@@ -146,15 +177,27 @@ Tunables reach the static SQL through a one-row `ref_config` table (COVID window
 match timezone, relegation assumption, playoff fallback) built by
 `usl/transform/reference.py`, so nothing is string-formatted into SQL.
 
-Checks: the seven the guide lists, plus three that mutation testing showed were
-needed: `one_match_per_club_per_date` (a doubleheader or a double-ingested season
-silently corrupts the standings window), `all_club_seasons_have_conference` (a
-club-season missing from `club_conference.csv` would otherwise drop out of
-`int_standings` on an inner join with no error), and
-`one_conference_per_club_season` (a club-season listed twice produces no null
-anywhere; it inflates `n_clubs`, shifts both lines, and doubles that club's mart
-rows). Ten in all, collected within a tier, stopped between tiers, every result
-logged.
+Checks: the seven the guide lists, plus seven that mutation testing and review
+showed were needed. Three on the match data: `one_match_per_club_per_date` (a
+doubleheader or a double-ingested season silently corrupts the standings window),
+`all_club_seasons_have_conference` (a club-season missing from
+`club_conference.csv` would otherwise drop out of `int_standings` on an inner join
+with no error), and `played_rows_consistent` (a raw row with a parseable score and a
+gate but a status other than `complete` - status drift at the provider - and any
+status outside `config.KNOWN_MATCH_STATUSES`, so a new spelling is named on the
+run it first appears). Four on the reference CSVs, which are the one input nothing
+upstream validates: `one_conference_per_club_season` (a club-season listed twice
+produces no null anywhere; it inflates `n_clubs`, shifts both lines, and doubles
+that club's mart rows), `all_conference_clubs_have_fixtures` (a club pasted under a
+season it never played sits in the table on zero points and moves the relegation
+line; when `all_clubs_mapped` is also failing the hint says to fix that first, since
+an unmapped club string leaves its club-season fixtureless too),
+`conference_structure_is_well_formed` (a duplicated pair, a non-numeric spot count
+that `TRY_CAST` would quietly turn into the default, or more spots than clubs), and
+`derby_clubs_are_known` (a typo in `derbies.csv` is otherwise a derby that never
+fires). Fourteen in all, collected within a tier, stopped between tiers, every
+result logged. Hints name the file and the row to change, and a check whose
+failure would send you to the wrong file says so.
 
 ## Phase 06 - features
 
@@ -178,6 +221,17 @@ logged.
 - **Unplayed fixtures are in the mart** with `attendance` null and
   `is_played = false`, because forecasts for remaining home matches need their
   features. Training and metrics use played rows only.
+- **A void fixture is kept in staging and counts for nothing.** `is_played` is
+  `status = 'complete'` with a parseable score, and `is_void` is a status in
+  `config.VOID_MATCH_STATUSES` (`canceled`, `cancelled`; the list reaches the SQL
+  through `ref_config`). A void row stays in `stg_matches` so `row_count_preserved`
+  still holds, but it is excluded from the standings grid, from
+  `matches_remaining`, from the home-match sequence and from the mart: it is not a
+  fixture anyone will play, so it must not lengthen the season or become a
+  forecast. `postponed` and `suspended` are not void - they are usually
+  rescheduled, and the row's date moves when they are. The
+  `mart_matches_staging` check compares the mart to the non-void staging count and
+  reports the void rows separately.
 - **Null policy.** The `features_not_null` check fails the run on any null outside
   `config.ALLOWED_NULL_FEATURES` (the four lag features). Nulls inside that set go
   to XGBoost, which learns a default direction. No imputation.
@@ -192,8 +246,17 @@ logged.
   `model_cv` holds expanding-window folds by season (empty with one season), and
   `model_variance` holds MAE per seed across `config.VARIANCE_SEEDS`, so the
   A-to-B gap can be read against run-to-run noise as exercise 7.2 requires.
-- The naive club-mean baseline is written as `model_name = 'naive_club_mean'`. A
-  club in the holdout with no training rows falls back to the training-set mean.
+- The naive club-mean baseline is written as `model_name = 'naive_club_mean'`. It
+  is the club's mean home gate in the same season's training rows first, then the
+  club's mean across every training season, then the training-set mean. Per-season
+  first because a club's gate moves with promotion, a new ground, or a cup run,
+  and a baseline that averages 2016 with 2024 is easier to beat than the one a
+  ticketing office would actually use. The bar is deliberately the harder one.
+- A played match with no gate in the source is neither trained on nor forecast.
+  It is not a future fixture, so a forecast for it would be a row Tableau shows as
+  upcoming for a match already played; and it has no target, so it cannot be a
+  training row. The training summary counts these as `n_no_gate` so a season
+  where the provider stopped reporting attendance is visible in the run log.
 - `XGB_PARAMS` carries `subsample` and `colsample_bytree` at 0.8, not for accuracy
   but so the seed does something: without subsampling the hist booster is fully
   deterministic and `model_variance` reads a spread of exactly zero across every

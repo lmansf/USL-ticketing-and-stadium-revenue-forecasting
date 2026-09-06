@@ -509,9 +509,18 @@ def train_all(
     levels = categorical_levels(frame)
 
     played_flag = frame["is_played"].astype("boolean").fillna(False).astype(bool)
-    played_mask = frame[config.TARGET].notna() & played_flag
-    played = frame.loc[played_mask]
-    future = frame.loc[~played_mask]
+    has_gate = frame[config.TARGET].notna()
+    # Train on played matches with a recorded gate; forecast only fixtures not
+    # yet played. A played match with no recorded gate is neither - forecasting
+    # it would list a match that already happened as a remaining fixture.
+    played = frame.loc[played_flag & has_gate]
+    future = frame.loc[~played_flag]
+    no_gate = int((played_flag & ~has_gate).sum())
+    if no_gate:
+        log.info(
+            "%d played match(es) with no recorded gate: excluded from training, not forecast",
+            no_gate,
+        )
     if played.empty:
         raise ValueError("mart_match_features has no played rows with attendance; nothing to train")
 
@@ -547,6 +556,7 @@ def train_all(
         "n_train": int(len(train)),
         "n_test": int(len(test)),
         "n_future": int(len(future)),
+        "n_no_gate": no_gate,
         "split_date": split_date,
         "seeds": seed_list,
         "feature_count": {},

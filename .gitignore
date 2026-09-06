@@ -27,6 +27,11 @@ data/*.duckdb.lock
 # the source data once the FootyStats subscription lapses, and it cannot be
 # regenerated at any price. Commit it.
 # See docs/phases/00-data-access-and-the-clock.md
+# What IS ignored there: a body still being written, and a body that failed
+# validation and was kept beside its slot for inspection. A .bad file can be an
+# error envelope that echoes the request, so it never goes into git.
+data/raw_archive/*.partial
+data/raw_archive/*.bad
 
 # Scratch response cache (see docs/phases/01-ingest-to-raw.md)
 .cache/

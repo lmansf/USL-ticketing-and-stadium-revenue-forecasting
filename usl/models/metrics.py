@@ -98,7 +98,7 @@ def compute_metrics(y_true: pd.Series, y_pred: pd.Series, *, n_train: int) -> Er
 
 
 def naive_club_mean(train: pd.DataFrame, test: pd.DataFrame) -> pd.Series:
-    """Predict each match as the club's mean home attendance in the training set.
+    """Predict each match as the club's mean home attendance this season, from training.
 
     Log this alongside both models every run. Attendance is dominated by which
     club is at home, that is mostly stable within a season, and this predictor is
@@ -108,12 +108,18 @@ def naive_club_mean(train: pd.DataFrame, test: pd.DataFrame) -> pd.Series:
     noticed. If XGBoost beats it by a wide margin, suspect leakage before you
     celebrate.
 
-    A club in the holdout with no training rows - an expansion club, or a club
-    whose first home match falls after the split - has no mean of its own. It
-    gets the training-set overall mean: the same "you know nothing about this
-    club" prior XGBoost effectively has for an unseen category, so the two are
-    being compared on equal terms. The alternative, dropping the row, would
-    score the baseline on an easier holdout than the models.
+    "This season" is the guide's definition and the stronger baseline: with
+    nine seasons in training, a club's all-time mean is a weaker predictor than
+    its current-season mean, and a weak baseline flatters the models. Three
+    steps of fallback, each documented because each is a choice: the club's
+    mean over the same season's training rows; failing that (the first home
+    match of a season falls in the holdout, or an expanding-window fold whose
+    test season has no training rows by construction) the club's mean over
+    every training season; failing that (an expansion club) the training-set
+    overall mean - the same "you know nothing about this club" prior XGBoost
+    effectively has for an unseen category, so the two are compared on equal
+    terms. Dropping the row instead would score the baseline on an easier
+    holdout than the models.
 
     Args:
         train: Training rows, with home_club_id and the target.
@@ -126,6 +132,13 @@ def naive_club_mean(train: pd.DataFrame, test: pd.DataFrame) -> pd.Series:
     club_means = gates.groupby(train["home_club_id"]).mean()
     overall = float(gates.mean())
     predicted = test["home_club_id"].map(club_means).astype("float64")
+    if "season" in train.columns and "season" in test.columns:
+        season_means = gates.groupby([train["season"], train["home_club_id"]]).mean()
+        keys = pd.MultiIndex.from_arrays([test["season"], test["home_club_id"]])
+        this_season = pd.Series(
+            season_means.reindex(keys).to_numpy(), index=test.index, dtype="float64"
+        )
+        predicted = this_season.where(this_season.notna(), predicted)
     missing = predicted.isna()
     if missing.any():
         clubs = sorted(str(c) for c in test.loc[missing, "home_club_id"].unique())

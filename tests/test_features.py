@@ -119,6 +119,10 @@ LAG_MATCHES = [
     ("l3", 2024, "2024-03-16", "club_a", "club_d", 1, 0, 1000),
     ("l4", 2024, "2024-03-23", "club_a", "club_e", 1, 0, 99999),
     ("l5", 2024, "2024-03-30", "club_a", "club_b", 1, 0, 1000),
+    # two more, with distinct gates, so the five-match window is pinned: a
+    # four-row or six-row ma5 gives a different mean on l6 and l7
+    ("l6", 2024, "2024-04-06", "club_a", "club_c", 1, 0, 2000),
+    ("l7", 2024, "2024-04-13", "club_a", "club_d", 1, 0, 3000),
 ]
 LAG_CLUBS = [(f"club_{c}", 2024, "East", f"Club {c.upper()}") for c in "abcde"]
 
@@ -277,6 +281,10 @@ def test_lag_window_excludes_the_current_match(con: duckdb.DuckDBPyConnection) -
     assert rows["l5"]["last_home_gate"] == 99999
     assert rows["l5"]["home_gate_ma3"] == pytest.approx((1000 + 1000 + 99999) / 3)
     assert rows["l5"]["home_gate_ma5"] == pytest.approx((3 * 1000 + 99999) / 4)
+    # exactly five rows in the window: l1..l5 for l6, l2..l6 for l7
+    assert rows["l6"]["home_gate_ma5"] == pytest.approx((4 * 1000 + 99999) / 5)
+    assert rows["l7"]["home_gate_ma5"] == pytest.approx((3 * 1000 + 99999 + 2000) / 5)
+    assert rows["l7"]["home_gate_ma3"] == pytest.approx((99999 + 1000 + 2000) / 3)
 
 
 def test_first_home_match_lag_is_null_and_that_is_allowed(
@@ -326,14 +334,14 @@ def test_mart_matches_staging_fires_on_a_dropped_or_duplicated_row(
     dropped = mart_matches_staging(con)
     assert not dropped.passed
     assert dropped.tier == "mart"
-    assert dropped.metadata == {"mart_rows": 5, "staging_rows": 6, "difference": -1}
+    assert dropped.metadata == {"mart_rows": 5, "staging_rows": 6, "difference": -1, "void_rows": 0}
     runner.materialise(con, "mart_match_features")
     con.execute(
         "INSERT INTO mart_match_features SELECT * FROM mart_match_features WHERE match_id = 'm3'"
     )
     fanned = mart_matches_staging(con)
     assert not fanned.passed
-    assert fanned.metadata == {"mart_rows": 7, "staging_rows": 6, "difference": 1}
+    assert fanned.metadata == {"mart_rows": 7, "staging_rows": 6, "difference": 1, "void_rows": 0}
 
 
 def test_lags_cross_seasons_and_same_fixture_last_season(
@@ -597,3 +605,76 @@ def test_missing_structure_row_gives_null_stakes_not_an_invented_number(
     rows = mart(con)
     assert {r["matches_since_elimination"] for r in rows.values()} == {-1}
     assert all(r["points_from_relegation_line"] is not None for r in rows.values())
+
+
+# ---------------------------------------------------------------------------
+# Void fixtures and unplayed fixtures after elimination
+# ---------------------------------------------------------------------------
+
+
+def test_void_fixture_is_kept_in_staging_and_counts_for_nothing(
+    con: duckdb.DuckDBPyConnection, tiny_season: pd.DataFrame, tiny_clubs: pd.DataFrame
+) -> None:
+    """A cancelled fixture stays in stg_matches flagged is_void and is otherwise absent.
+
+    It creates no standings date, adds nothing to matches_remaining, has no
+    mart row and so gets no forecast, and does not make an earlier match stop
+    being the club's final home match. mart_matches_staging expects exactly
+    that and reports the void count.
+    """
+    cancelled = pd.concat(
+        [
+            tiny_season,
+            pd.DataFrame(
+                [("m7", 2024, "2024-03-23", "club_a", "club_b", None, None, None)],
+                columns=tiny_season.columns,
+            ),
+        ],
+        ignore_index=True,
+    )
+    stage_frames(con, with_unplayed(cancelled, ["m7"]), tiny_clubs, void=["m7"])
+    for model in DOWNSTREAM_MODELS:
+        runner.materialise(con, model)
+
+    assert con.execute("SELECT is_void FROM stg_matches WHERE match_id = 'm7'").fetchone() == (
+        True,
+    )
+    assert con.execute("SELECT count(*) FROM stg_matches").fetchone() == (7,)
+    assert con.execute("SELECT max(date) FROM int_standings").fetchone() == (dt.date(2024, 3, 17),)
+    assert con.execute(
+        "SELECT max(fixtures_total) FROM int_stakes WHERE club_id = 'club_a'"
+    ).fetchone() == (3,)
+    rows = mart(con)
+    assert "m7" not in rows and len(rows) == 6
+    assert rows["m5"]["is_final_home_match"] is True
+    result = mart_matches_staging(con)
+    assert result.passed
+    assert (result.metadata["staging_rows"], result.metadata["void_rows"]) == (6, 1)
+
+
+def test_matches_since_elimination_counts_unplayed_home_fixtures(
+    con: duckdb.DuckDBPyConnection,
+) -> None:
+    """An unplayed home fixture after elimination is a match since elimination too.
+
+    Unplayed fixtures are in the mart so their features can be forecast, and
+    for club_d's home fixture on 04-06 (e11, unplayed) that feature is 0; the
+    played home match a week later (e12) reads 1 because e11 counts. On 03-30
+    club_d is still live: 2 points plus three matches left reaches 11 against
+    club_a's 10.
+    """
+    extended = ELIMINATION_MATCHES + [
+        ("e11", 2024, "2024-04-06", "club_d", "club_c", None, None, None),
+        ("e12", 2024, "2024-04-13", "club_d", "club_b", 0, 1, 2500),
+    ]
+    build_mart(
+        con,
+        with_unplayed(matches(extended), ["e11"]),
+        clubs(ELIMINATION_CLUBS),
+        structure=ELIMINATION_STRUCTURE,
+    )
+    rows = mart(con)
+    assert rows["e10"]["matches_since_elimination"] == -1
+    assert rows["e11"]["matches_since_elimination"] == 0
+    assert rows["e12"]["matches_since_elimination"] == 1
+    assert rows["e11"]["is_played"] is False

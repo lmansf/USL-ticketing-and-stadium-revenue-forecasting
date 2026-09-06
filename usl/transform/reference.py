@@ -67,7 +67,8 @@ def create_ref_config(con: duckdb.DuckDBPyConnection) -> None:
             CAST(? AS DATE)     AS covid_start,
             CAST(? AS DATE)     AS covid_end,
             CAST(? AS INTEGER)  AS assumed_relegation_spots,
-            CAST(? AS INTEGER)  AS default_playoff_spots
+            CAST(? AS INTEGER)  AS default_playoff_spots,
+            CAST(? AS VARCHAR)  AS void_statuses
         """,
         [
             config.MATCH_TZ,
@@ -75,6 +76,7 @@ def create_ref_config(con: duckdb.DuckDBPyConnection) -> None:
             config.COVID_END.isoformat(),
             config.ASSUMED_RELEGATION_SPOTS,
             config.DEFAULT_PLAYOFF_SPOTS,
+            ",".join(s.lower() for s in config.VOID_MATCH_STATUSES),
         ],
     )
 

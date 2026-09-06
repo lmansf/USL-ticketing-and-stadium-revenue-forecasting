@@ -12,7 +12,7 @@ usl/
 +-- ingest/           footystats.py (API client), archive.py (durable raw store)
 +-- load/             raw.py - upsert into raw_matches with the insert/update/unchanged split
 +-- sql/              The SQL layer, six .sql files, one per model
-+-- transform/        runner.py (materialise in order), checks.py (ten data-quality checks),
++-- transform/        runner.py (materialise in order), checks.py (fourteen data-quality checks),
 |                     reference.py (the CSVs and ref_config, one place)
 +-- features/         definitions.py - the feature families and their evidence class
 +-- models/           train.py, metrics.py

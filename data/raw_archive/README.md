@@ -46,10 +46,19 @@ most people who will look at it. It passes today.
 
 ## Rules
 
-- **Written before parsing.** A malformed payload still lands here, so a parse bug
-  costs you a debugging session rather than a request. The one exception: a response
-  whose body says `"success": false` is removed again, because an error body served
-  as an archive hit for ever is worse than a missing file.
+- **Written before parsing, committed after.** A fresh body lands in
+  `<file>.partial`, is parsed, and only a body that is JSON and does not say
+  `"success": false` replaces the archived file, in one atomic rename. A body that
+  fails either check is moved to `<file>.bad` and kept for you to look at, but is
+  never served as a hit and never overwrites what was there. So a lapsed-key error
+  envelope or a captive-portal page cannot take the place of a season, even with
+  `--force`. `.partial` and `.bad` files are gitignored; `python -m usl.run archive`
+  counts the quarantined ones.
+- **One file per pull of a live season.** A season still being played is
+  re-requested every week, and each pull is archived on its own as
+  `league-matches_season_id_<id>_as_of_<date>.json`. Nothing is overwritten and the
+  history of what the API said on each date is kept. Without a key the newest
+  snapshot is served, with a warning that nothing is being refreshed.
 - **Byte for byte.** Not pretty-printed, not re-encoded. What is on disk is what the
   API said.
 - **No API key.** Not in a filename, not inside a file. These go into git; the key

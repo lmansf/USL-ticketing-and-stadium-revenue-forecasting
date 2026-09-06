@@ -325,3 +325,18 @@ def test_archive_command_reports_the_example_season(
     assert str(config.EXAMPLE_SEASON_ID) in out
     assert "not pulled yet" in out
     assert "2019" in out
+    assert "QUARANTINED" not in out
+
+
+def test_archive_command_flags_a_quarantined_response(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A .bad file is a spent request that is never served; the summary says so."""
+    sandbox = tmp_path / "raw_archive"
+    sandbox.mkdir()
+    (sandbox / "league-matches_season_id_1625.json.bad").write_text('{"success": false}')
+    monkeypatch.setattr(config, "ARCHIVE_DIR", sandbox)
+    assert main(["archive"]) == EXIT_OK
+    out = capsys.readouterr().out
+    assert "QUARANTINED: 1 .bad file(s)" in out
+    assert "files:      0" in out

@@ -185,6 +185,7 @@ def stage_frames(
     *,
     structure: pd.DataFrame | None = None,
     derbies: pd.DataFrame | None = None,
+    void: list[str] | None = None,
 ) -> None:
     """Stand up the staging tier and reference tables straight from small frames.
 
@@ -200,6 +201,7 @@ def stage_frames(
         structure: conference_structure rows. Defaults to two playoff spots and
             one relegation spot for every (season, conference) in clubs.
         derbies: derbies rows. Defaults to none.
+        void: match_ids to mark is_void (a cancelled fixture). Defaults to none.
     """
     create_ref_config(con)
 
@@ -215,6 +217,7 @@ def stage_frames(
             CAST(date AS TIMESTAMP) + INTERVAL 12 HOUR        AS kickoff_utc,
             CASE WHEN home_goals IS NULL THEN 'incomplete' ELSE 'complete' END AS status,
             home_goals IS NOT NULL                            AS is_played,
+            list_contains($void, CAST(match_id AS VARCHAR))   AS is_void,
             CAST(home_club_id AS VARCHAR)                     AS home_raw,
             CAST(away_club_id AS VARCHAR)                     AS away_raw,
             CAST(home_club_id AS VARCHAR)                     AS home_club_id,
@@ -229,7 +232,8 @@ def stage_frames(
             dayofweek(CAST(date AS DATE)) IN (0, 6)           AS is_weekend,
             dayofweek(CAST(date AS DATE)) IN (2, 3, 4)        AS is_midweek
         FROM _matches
-        """
+        """,
+        {"void": list(void or [])},
     )
     con.unregister("_matches")
 

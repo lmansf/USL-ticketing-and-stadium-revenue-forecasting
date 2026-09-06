@@ -310,3 +310,197 @@ def test_unique_club_seasons_pass(
     result = one_conference_per_club_season(con)
     assert result.passed
     assert result.metadata == {"n_duplicated": 0, "duplicated": []}
+
+
+# ---------------------------------------------------------------------------
+# Reference data that is wrong without being null
+# ---------------------------------------------------------------------------
+
+
+def _stage_from_frames(
+    con: duckdb.DuckDBPyConnection,
+    raw: pd.DataFrame,
+    aliases: pd.DataFrame,
+    club_rows: pd.DataFrame,
+) -> None:
+    """raw_matches plus the reference tables, then the two staging models."""
+    ensure_raw_tables(con)
+    con.register("_raw", raw)
+    con.execute(f"INSERT INTO raw_matches SELECT {', '.join(RAW_COLUMNS)} FROM _raw")
+    con.unregister("_raw")
+    register_reference_frame(con, "club_aliases", aliases)
+    register_reference_frame(con, "club_conference", club_rows)
+    register_reference_frame(
+        con,
+        "conference_structure",
+        club_rows[["season", "conference"]]
+        .drop_duplicates()
+        .assign(playoff_spots=2, relegation_spots=1, note=""),
+    )
+    register_reference_frame(
+        con, "derbies", pd.DataFrame(columns=["club_id_a", "club_id_b", "note"])
+    )
+    create_ref_config(con)
+    runner.materialise(con, "stg_clubs")
+    runner.materialise(con, "stg_matches")
+
+
+def test_blank_conference_counts_as_missing(
+    con: duckdb.DuckDBPyConnection, tiny_season: pd.DataFrame, tiny_clubs: pd.DataFrame
+) -> None:
+    """A club_conference.csv row with an empty conference cell would vanish from the grid.
+
+    NULL never equals NULL, so the club gets no standings rows and the failure
+    would surface two tiers later as null features with no club named. The
+    staging check names it.
+    """
+    from usl.transform.checks import all_club_seasons_have_conference
+
+    blank = tiny_clubs.copy()
+    blank.loc[blank["club_id"] == "club_d", "conference"] = None
+    stage_frames(con, tiny_season, blank)
+
+    result = all_club_seasons_have_conference(con)
+    assert not result.passed
+    assert result.metadata["missing"] == [{"club_id": "club_d", "season": 2024}]
+    assert "blank conference" in result.metadata["hint"]
+
+
+def test_phantom_club_season_is_named_before_it_moves_the_line(
+    con: duckdb.DuckDBPyConnection, tiny_season: pd.DataFrame, tiny_clubs: pd.DataFrame
+) -> None:
+    """A club listed for a season it plays no fixture in sits in the table on 0 points.
+
+    n_clubs is one too many and the relegation line moves a place; no null
+    appears anywhere. all_conference_clubs_have_fixtures names the pair.
+    """
+    from usl.transform.checks import all_conference_clubs_have_fixtures
+    from usl.transform.runner import materialise
+
+    phantom = pd.concat(
+        [
+            tiny_clubs,
+            pd.DataFrame([("club_e", 2024, "East", "Club E")], columns=tiny_clubs.columns),
+        ],
+        ignore_index=True,
+    )
+    stage_frames(con, tiny_season, phantom)
+
+    result = all_conference_clubs_have_fixtures(con)
+    assert not result.passed
+    assert result.metadata["without_fixtures"] == [{"club_id": "club_e", "season": 2024}]
+    assert "club_conference.csv" in result.metadata["hint"]
+
+    # the silent damage the check prevents
+    materialise(con, "int_standings")
+    row = con.execute("SELECT max(n_clubs) FROM int_standings").fetchone()
+    assert row is not None and row[0] == 5
+
+    stage_frames(con, tiny_season, tiny_clubs)
+    assert all_conference_clubs_have_fixtures(con).passed
+
+
+def test_conference_structure_problems_are_named(
+    con: duckdb.DuckDBPyConnection, tiny_season: pd.DataFrame, tiny_clubs: pd.DataFrame
+) -> None:
+    """Duplicated pairs, unparseable spots, and spots beyond the conference size all fail."""
+    from usl.transform.checks import conference_structure_is_well_formed
+
+    columns = ["season", "conference", "playoff_spots", "relegation_spots", "note"]
+    good = pd.DataFrame([(2024, "East", 2, 1, "")], columns=columns)
+    stage_frames(con, tiny_season, tiny_clubs, structure=good)
+    assert conference_structure_is_well_formed(con).passed
+
+    duplicated = pd.DataFrame(
+        [(2024, "East", 2, 1, ""), (2024, "East", 2, 1, "again")], columns=columns
+    )
+    stage_frames(con, tiny_season, tiny_clubs, structure=duplicated)
+    result = conference_structure_is_well_formed(con)
+    assert not result.passed
+    assert result.metadata["duplicated"] == [{"season": "2024", "conference": "East", "rows": 2}]
+
+    typo = pd.DataFrame([(2024, "East", 2, "one", "")], columns=columns)
+    stage_frames(con, tiny_season, tiny_clubs, structure=typo)
+    result = conference_structure_is_well_formed(con)
+    assert not result.passed
+    assert result.metadata["unparseable"][0]["relegation_spots"] == "one"
+
+    too_many = pd.DataFrame([(2024, "East", 4, 1, "")], columns=columns)  # four clubs
+    stage_frames(con, tiny_season, tiny_clubs, structure=too_many)
+    result = conference_structure_is_well_formed(con)
+    assert not result.passed
+    assert result.metadata["out_of_range"][0]["n_clubs"] == 4
+
+
+def test_unknown_derby_club_is_named(
+    con: duckdb.DuckDBPyConnection, tiny_season: pd.DataFrame, tiny_clubs: pd.DataFrame
+) -> None:
+    """A typo in derbies.csv would silently make is_derby false for every meeting."""
+    from usl.transform.checks import derby_clubs_are_known
+
+    typo = pd.DataFrame([("club_a", "club_bb", "typo")], columns=["club_id_a", "club_id_b", "note"])
+    stage_frames(con, tiny_season, tiny_clubs, derbies=typo)
+    result = derby_clubs_are_known(con)
+    assert not result.passed
+    assert result.metadata["unknown"] == ["club_bb"]
+
+    fine = pd.DataFrame([("club_a", "club_b", "")], columns=["club_id_a", "club_id_b", "note"])
+    stage_frames(con, tiny_season, tiny_clubs, derbies=fine)
+    assert derby_clubs_are_known(con).passed
+
+
+def test_alias_row_with_a_blank_club_id_gets_the_fill_in_hint(
+    con: duckdb.DuckDBPyConnection,
+    tiny_raw: pd.DataFrame,
+    club_aliases: pd.DataFrame,
+    tiny_clubs: pd.DataFrame,
+) -> None:
+    """The string IS in the CSV; the fix is to fill the club_id in, not to add a row."""
+    from usl.transform.checks import all_clubs_mapped
+
+    aliases = club_aliases.copy()
+    aliases.loc[aliases["raw_name"] == "Club C", "club_id"] = None
+    _stage_from_frames(con, tiny_raw, aliases, tiny_clubs)
+
+    result = all_clubs_mapped(con)
+    assert not result.passed
+    assert result.metadata["unmapped"] == ["Club C"]
+    assert result.metadata["blank_club_id"] == ["Club C"]
+    assert "fill the club_id in" in result.metadata["hint"]
+    assert "add each string" not in result.metadata["hint"]
+
+
+def test_status_drift_is_named_rather_than_un_playing_the_season(
+    con: duckdb.DuckDBPyConnection,
+    tiny_raw: pd.DataFrame,
+    club_aliases: pd.DataFrame,
+    tiny_clubs: pd.DataFrame,
+) -> None:
+    """A renamed status must stop the run, not quietly strip every result.
+
+    Case and whitespace drift are absorbed by staging ('Complete ' is played).
+    A genuinely new value ('finished') on a row that plainly carries a result
+    and a gate is both an unknown status and an inconsistency, and the check
+    names it with its count.
+    """
+    from usl.transform.checks import played_rows_consistent
+
+    raw = tiny_raw.copy()
+    raw.loc[0, "status"] = "Complete "
+    _stage_from_frames(con, raw, club_aliases, tiny_clubs)
+    assert con.execute("SELECT is_played FROM stg_matches WHERE match_id = 'm1'").fetchone() == (
+        True,
+    )
+    assert played_rows_consistent(con).passed
+
+    con.execute("DROP TABLE raw_matches")
+    raw.loc[1, "status"] = "finished"
+    _stage_from_frames(con, raw, club_aliases, tiny_clubs)
+    assert con.execute("SELECT is_played FROM stg_matches WHERE match_id = 'm2'").fetchone() == (
+        False,
+    )
+    result = played_rows_consistent(con)
+    assert not result.passed
+    assert result.metadata["inconsistent_statuses"] == {"finished": 1}
+    assert result.metadata["unknown_statuses"] == {"finished": 1}
+    assert "KNOWN_MATCH_STATUSES" in result.metadata["hint"]

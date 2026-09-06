@@ -708,3 +708,63 @@ def test_export_hyper_with_pantab_writes_beside_the_csv(
     hypers = {p.stem for p in paths if p.suffix == ".hyper"}
     assert hypers == csvs
     assert (tmp_path / f"{BAND_FILE_STEM}.csv").exists() is False  # no model tables yet
+
+
+# ---------------------------------------------------------------------------
+# Played matches with no recorded gate, and the baseline's definition of "this season"
+# ---------------------------------------------------------------------------
+
+
+def test_played_match_without_a_gate_is_neither_trained_on_nor_forecast(
+    mart_con: duckdb.DuckDBPyConnection,
+) -> None:
+    """A past match with a missing gate is not a remaining fixture.
+
+    Forecasting it would list a match that already happened in the drill-down
+    as if it were still to come; training on it is impossible. It is counted,
+    logged, and left out of both.
+    """
+    from usl.models.train import train_all
+
+    row = mart_con.execute(
+        "SELECT match_id FROM mart_match_features WHERE is_played AND attendance IS NOT NULL "
+        "ORDER BY date, match_id LIMIT 1 OFFSET 5"
+    ).fetchone()
+    assert row is not None
+    match_id = row[0]
+    played_before = mart_con.execute(
+        "SELECT count(*) FROM mart_match_features WHERE is_played AND attendance IS NOT NULL"
+    ).fetchone()
+    mart_con.execute(
+        "UPDATE mart_match_features SET attendance = NULL WHERE match_id = ?", [match_id]
+    )
+
+    summary = train_all(mart_con, dt.date(2026, 9, 9))
+    assert summary["n_no_gate"] == 1
+    assert played_before is not None and summary["n_played"] == played_before[0] - 1
+    written = mart_con.execute(
+        "SELECT count(*) FROM predictions WHERE match_id = ?", [match_id]
+    ).fetchone()
+    assert written == (0,)
+
+
+def test_naive_baseline_uses_this_seasons_mean_first() -> None:
+    """The club's mean this season, then across seasons, then the training mean."""
+    train = pd.DataFrame(
+        {
+            "season": [2023, 2023, 2024, 2024],
+            "home_club_id": ["club_a", "club_a", "club_a", "club_b"],
+            "attendance": [1000.0, 1000.0, 3000.0, 500.0],
+        }
+    )
+    test = pd.DataFrame(
+        {
+            "season": [2024, 2025, 2024],
+            "home_club_id": ["club_a", "club_a", "club_z"],
+            "attendance": [0.0, 0.0, 0.0],
+        }
+    )
+    predicted = naive_club_mean(train, test)
+    assert predicted.iloc[0] == pytest.approx(3000.0)  # club_a, this season
+    assert predicted.iloc[1] == pytest.approx(5000.0 / 3)  # club_a, no 2025 rows: all seasons
+    assert predicted.iloc[2] == pytest.approx(5500.0 / 4)  # club_z: the training mean

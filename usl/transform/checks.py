@@ -151,12 +151,34 @@ def all_clubs_mapped(con: duckdb.DuckDBPyConnection) -> CheckResult:
     ).fetchall()
     unmapped = sorted("<null>" if r[0] is None else str(r[0]) for r in rows)
     metadata: dict[str, Any] = {"n_unmapped": len(unmapped), "unmapped": unmapped}
-    if unmapped:
-        metadata["hint"] = (
-            "add each string to usl/ref/club_aliases.csv as a raw_name row. If one "
-            "looks like an id that IS in the CSV, suspect a type mismatch rather than "
-            "a missing club: 93 and '93' are different join keys."
+    # An alias row with the raw_name filled in and the club_id left blank joins
+    # and yields a null club_id. Naming it as "unmapped" would send the reader
+    # to add a second row for the same string, which then fans the join out.
+    blank: list[str] = []
+    if table_exists(con, "club_aliases"):
+        blank = sorted(
+            str(r[0])
+            for r in con.execute(
+                "SELECT raw_name FROM club_aliases WHERE raw_name IS NOT NULL AND club_id IS NULL"
+            ).fetchall()
         )
+    if blank:
+        metadata["blank_club_id"] = blank
+    if unmapped:
+        still_missing = [name for name in unmapped if name not in blank]
+        hints = []
+        if still_missing:
+            hints.append(
+                "add each string to usl/ref/club_aliases.csv as a raw_name row. If one "
+                "looks like an id that IS in the CSV, suspect a type mismatch rather than "
+                "a missing club: 93 and '93' are different join keys."
+            )
+        if blank:
+            hints.append(
+                f"{blank} are already in club_aliases.csv with a blank club_id - fill the "
+                "club_id in on that row rather than adding another."
+            )
+        metadata["hint"] = " ".join(hints)
     return CheckResult("all_clubs_mapped", "staging", not unmapped, metadata)
 
 
@@ -259,12 +281,15 @@ def one_match_per_club_per_date(con: duckdb.DuckDBPyConnection) -> CheckResult:
 
 
 def all_club_seasons_have_conference(con: duckdb.DuckDBPyConnection) -> CheckResult:
-    """Fail when a club-season in stg_matches has no row in stg_clubs.
+    """Fail when a club-season in stg_matches has no usable row in stg_clubs.
 
     int_standings joins conference from stg_clubs with an inner join, on
     purpose, so a club-season missing from club_conference.csv would otherwise
-    drop out of the table with no error. This check is what makes that loud.
-    Unmapped clubs (null club_id) are all_clubs_mapped's job and are skipped.
+    drop out of the table with no error. This check is what makes that loud. A
+    row whose conference is blank counts as missing: the grid is built per
+    conference and NULL matches nothing, so the club would vanish just the
+    same. Unmapped clubs (null club_id) are all_clubs_mapped's job and are
+    skipped.
 
     Args:
         con: Open connection.
@@ -283,7 +308,8 @@ def all_club_seasons_have_conference(con: duckdb.DuckDBPyConnection) -> CheckRes
         )
         SELECT cs.club_id, cs.season
         FROM club_seasons cs
-        LEFT JOIN stg_clubs c ON c.club_id = cs.club_id AND c.season = cs.season
+        LEFT JOIN stg_clubs c
+          ON c.club_id = cs.club_id AND c.season = cs.season AND c.conference IS NOT NULL
         WHERE c.club_id IS NULL
         ORDER BY cs.season, cs.club_id
         """
@@ -296,7 +322,13 @@ def all_club_seasons_have_conference(con: duckdb.DuckDBPyConnection) -> CheckRes
             "n_missing": len(rows),
             "missing": [{"club_id": r[0], "season": r[1]} for r in rows[:_LIST_LIMIT]],
             **(
-                {"hint": "add a row per (club_id, season) to usl/ref/club_conference.csv"}
+                {
+                    "hint": (
+                        "add a row per (club_id, season) to usl/ref/club_conference.csv, "
+                        "with the conference filled in - a row with a blank conference "
+                        "counts as missing, because the standings grid would drop it"
+                    )
+                }
                 if rows
                 else {}
             ),
@@ -350,6 +382,278 @@ def one_conference_per_club_season(con: duckdb.DuckDBPyConnection) -> CheckResul
             **(
                 {"hint": "one row per (club_id, season) in usl/ref/club_conference.csv"}
                 if rows
+                else {}
+            ),
+        },
+    )
+
+
+def played_rows_consistent(con: duckdb.DuckDBPyConnection) -> CheckResult:
+    """Fail when a status value would quietly un-play matches.
+
+    is_played is derived from the status string, and goals and attendance are
+    nulled for anything that is not played. So a provider that renamed
+    'complete' to 'finished' would strip every result and every gate out of
+    staging while every other check passed and the run log reported success.
+    Two signals catch it at the staging tier: a raw row that carries parseable
+    goals and a positive attendance but reads is_played = false, and any status
+    value outside config.KNOWN_MATCH_STATUSES - which is how the set gets
+    extended deliberately rather than by accident.
+
+    Args:
+        con: Open connection.
+
+    Returns:
+        CheckResult with the inconsistent statuses and the unknown statuses,
+        each with a row count, in metadata.
+    """
+    if not table_exists(con, "raw_matches"):
+        return CheckResult(
+            "played_rows_consistent",
+            "staging",
+            True,
+            {"reason": "no raw_matches table; staging was built without a raw tier"},
+        )
+    known = [status.lower() for status in config.KNOWN_MATCH_STATUSES]
+    inconsistent = con.execute(
+        """
+        SELECT COALESCE(r.status, '<null>') AS status, count(*)
+        FROM raw_matches r
+        JOIN stg_matches s USING (match_id)
+        WHERE NOT s.is_played
+          AND TRY_CAST(r.home_goals AS INTEGER) IS NOT NULL
+          AND TRY_CAST(r.away_goals AS INTEGER) IS NOT NULL
+          AND TRY_CAST(r.attendance AS INTEGER) > 0
+        GROUP BY 1
+        ORDER BY 1
+        """
+    ).fetchall()
+    unknown = con.execute(
+        """
+        SELECT COALESCE(status, '<null>') AS status, count(*)
+        FROM raw_matches
+        WHERE status IS NULL OR NOT list_contains($known, lower(trim(status)))
+        GROUP BY 1
+        ORDER BY 1
+        """,
+        {"known": known},
+    ).fetchall()
+    metadata: dict[str, Any] = {
+        "inconsistent_statuses": {str(r[0]): int(r[1]) for r in inconsistent},
+        "unknown_statuses": {str(r[0]): int(r[1]) for r in unknown},
+        "known_statuses": known,
+    }
+    if inconsistent or unknown:
+        metadata["hint"] = (
+            "a played match is reading as unplayed, or the provider sent a status this "
+            "project has never seen. If a status was renamed, add it to "
+            "config.KNOWN_MATCH_STATUSES (and to VOID_MATCH_STATUSES if it means the fixture "
+            "will never be played); if it means played, teach stg_matches.sql about it."
+        )
+    return CheckResult(
+        "played_rows_consistent", "staging", not inconsistent and not unknown, metadata
+    )
+
+
+def all_conference_clubs_have_fixtures(con: duckdb.DuckDBPyConnection) -> CheckResult:
+    """Fail when a club-season in stg_clubs has no fixture at all in stg_matches.
+
+    The mirror image of all_club_seasons_have_conference. The standings grid
+    is built from stg_clubs, so a club-season that exists only in
+    club_conference.csv - a club pasted under the wrong season, or listed for a
+    season it folded before - sits in the table on zero points on every date:
+    n_clubs is one too many, the relegation line moves up a place, and a real
+    club on zero points with a negative goal difference is out-ranked by a
+    phantom. No null appears anywhere. This names the pair.
+
+    Args:
+        con: Open connection.
+
+    Returns:
+        CheckResult with the fixture-less (club_id, season) pairs in metadata.
+    """
+    rows = con.execute(
+        """
+        WITH fixtures AS (
+            SELECT DISTINCT season, home_club_id AS club_id FROM stg_matches
+            UNION
+            SELECT DISTINCT season, away_club_id FROM stg_matches
+        )
+        SELECT c.club_id, c.season
+        FROM stg_clubs c
+        LEFT JOIN fixtures f ON f.club_id = c.club_id AND f.season = c.season
+        WHERE f.club_id IS NULL
+        ORDER BY c.season, c.club_id
+        """
+    ).fetchall()
+    # An unmapped club string leaves its fixtures with a null club_id, so the
+    # club-season it belongs to looks fixtureless here too. That is a cascade
+    # of all_clubs_mapped, not a phantom row; say so, so the hint is not wrong.
+    unmapped_row = con.execute(
+        "SELECT count(*) FROM stg_matches WHERE home_club_id IS NULL OR away_club_id IS NULL"
+    ).fetchone()
+    n_unmapped = int(unmapped_row[0]) if unmapped_row else 0
+    if rows and n_unmapped:
+        hint = (
+            f"{n_unmapped} fixture(s) carry an unmapped club string, so fix all_clubs_mapped "
+            "first: a club whose raw name is missing from usl/ref/club_aliases.csv has no "
+            "fixtures here. Only a pair still listed after that is a phantom in "
+            "usl/ref/club_conference.csv"
+        )
+    else:
+        hint = (
+            "remove the row from usl/ref/club_conference.csv, or check the "
+            "season: a club-season with no fixtures is a phantom in the table"
+        )
+    return CheckResult(
+        "all_conference_clubs_have_fixtures",
+        "staging",
+        not rows,
+        {
+            "n_without_fixtures": len(rows),
+            "without_fixtures": [{"club_id": r[0], "season": r[1]} for r in rows[:_LIST_LIMIT]],
+            "n_unmapped_fixtures": n_unmapped,
+            **({"hint": hint} if rows else {}),
+        },
+    )
+
+
+def conference_structure_is_well_formed(con: duckdb.DuckDBPyConnection) -> CheckResult:
+    """Fail when conference_structure.csv cannot mean what it says.
+
+    Three ways the file goes wrong silently: a (season, conference) pasted
+    twice fans int_stakes and the mart out; a non-numeric playoff_spots or
+    relegation_spots is TRY_CAST to NULL and quietly takes the configured
+    default, which is indistinguishable from leaving it blank on purpose; a
+    number of spots at or beyond the size of the conference leaves no line
+    club, so the stakes features go null two tiers later without naming the
+    row. Blank stays the documented "use the default" signal.
+
+    Args:
+        con: Open connection.
+
+    Returns:
+        CheckResult with duplicated pairs, unparseable rows, and out-of-range
+        rows in metadata.
+    """
+    if not table_exists(con, "conference_structure"):
+        return CheckResult(
+            "conference_structure_is_well_formed",
+            "staging",
+            True,
+            {"reason": "no conference_structure table"},
+        )
+    duplicated = con.execute(
+        """
+        SELECT season, conference, count(*) FROM conference_structure
+        GROUP BY 1, 2 HAVING count(*) > 1 ORDER BY 1, 2
+        """
+    ).fetchall()
+    unparseable = con.execute(
+        """
+        SELECT season, conference, playoff_spots, relegation_spots FROM conference_structure
+        WHERE (playoff_spots IS NOT NULL AND TRY_CAST(playoff_spots AS INTEGER) IS NULL)
+           OR (relegation_spots IS NOT NULL AND TRY_CAST(relegation_spots AS INTEGER) IS NULL)
+           OR TRY_CAST(season AS INTEGER) IS NULL
+        ORDER BY 1, 2
+        """
+    ).fetchall()
+    out_of_range = con.execute(
+        """
+        WITH sizes AS (
+            SELECT season, conference, count(*) AS n_clubs FROM stg_clubs GROUP BY 1, 2
+        )
+        SELECT s.season, s.conference, cs.playoff_spots, cs.relegation_spots, s.n_clubs
+        FROM conference_structure cs
+        JOIN sizes s
+          ON s.season = TRY_CAST(cs.season AS INTEGER) AND s.conference = cs.conference
+        WHERE TRY_CAST(cs.playoff_spots AS INTEGER) NOT BETWEEN 1 AND s.n_clubs - 1
+           OR TRY_CAST(cs.relegation_spots AS INTEGER) NOT BETWEEN 0 AND s.n_clubs - 1
+        ORDER BY 1, 2
+        """
+    ).fetchall()
+    problems = bool(duplicated or unparseable or out_of_range)
+    return CheckResult(
+        "conference_structure_is_well_formed",
+        "staging",
+        not problems,
+        {
+            "duplicated": [
+                {"season": r[0], "conference": r[1], "rows": int(r[2])} for r in duplicated
+            ],
+            "unparseable": [
+                {
+                    "season": r[0],
+                    "conference": r[1],
+                    "playoff_spots": r[2],
+                    "relegation_spots": r[3],
+                }
+                for r in unparseable
+            ],
+            "out_of_range": [
+                {
+                    "season": r[0],
+                    "conference": r[1],
+                    "playoff_spots": r[2],
+                    "relegation_spots": r[3],
+                    "n_clubs": int(r[4]),
+                }
+                for r in out_of_range
+            ],
+            **(
+                {
+                    "hint": (
+                        "one row per (season, conference) in usl/ref/conference_structure.csv, "
+                        "spots as plain integers between 1 and the conference size minus one "
+                        "(relegation may be 0), or blank to take the configured default"
+                    )
+                }
+                if problems
+                else {}
+            ),
+        },
+    )
+
+
+def derby_clubs_are_known(con: duckdb.DuckDBPyConnection) -> CheckResult:
+    """Fail when derbies.csv names a club_id that exists in no season.
+
+    A typo in either column, or a stale id after a rename, never matches: the
+    pair's is_derby is false for every meeting and nothing says so. is_derby is
+    a measured feature in both models, so the silence matters.
+
+    Args:
+        con: Open connection.
+
+    Returns:
+        CheckResult with the unknown club ids in metadata.
+    """
+    if not table_exists(con, "derbies"):
+        return CheckResult("derby_clubs_are_known", "staging", True, {"reason": "no derbies table"})
+    rows = con.execute(
+        """
+        WITH named AS (
+            SELECT club_id_a AS club_id FROM derbies
+            UNION
+            SELECT club_id_b FROM derbies
+        )
+        SELECT club_id FROM named
+        WHERE club_id IS NOT NULL
+          AND club_id NOT IN (SELECT DISTINCT club_id FROM stg_clubs WHERE club_id IS NOT NULL)
+        ORDER BY 1
+        """
+    ).fetchall()
+    unknown = [str(r[0]) for r in rows]
+    return CheckResult(
+        "derby_clubs_are_known",
+        "staging",
+        not unknown,
+        {
+            "n_unknown": len(unknown),
+            "unknown": unknown,
+            **(
+                {"hint": "every club_id in usl/ref/derbies.csv must appear in club_conference.csv"}
+                if unknown
                 else {}
             ),
         },
@@ -466,8 +770,10 @@ def mart_matches_staging(con: duckdb.DuckDBPyConnection) -> CheckResult:
     """Fail when the mart row count differs from the staging row count.
 
     Unplayed fixtures are in the mart by design - forecasts for remaining home
-    matches need their features - so the mart carries every staging match, one
-    row each. Fewer means a join dropped matches; more means one fanned out.
+    matches need their features - so the mart carries every staging match that
+    is not void, one row each. Fewer means a join dropped matches; more means
+    one fanned out. Void fixtures (cancelled, never to be played) are counted
+    separately and expected to be absent.
 
     Args:
         con: Open connection.
@@ -476,12 +782,21 @@ def mart_matches_staging(con: duckdb.DuckDBPyConnection) -> CheckResult:
         CheckResult with both counts in metadata.
     """
     mart = row_count(con, "mart_match_features")
-    staging = row_count(con, "stg_matches")
+    row = con.execute(
+        "SELECT count(*) FILTER (WHERE NOT is_void), count(*) FILTER (WHERE is_void) "
+        "FROM stg_matches"
+    ).fetchone()
+    staging, void = (int(row[0]), int(row[1])) if row else (0, 0)
     return CheckResult(
         "mart_matches_staging",
         "mart",
         mart == staging,
-        {"mart_rows": mart, "staging_rows": staging, "difference": mart - staging},
+        {
+            "mart_rows": mart,
+            "staging_rows": staging,
+            "void_rows": void,
+            "difference": mart - staging,
+        },
     )
 
 
@@ -493,6 +808,10 @@ STAGING_CHECKS: tuple[Check, ...] = (
     one_match_per_club_per_date,
     all_club_seasons_have_conference,
     one_conference_per_club_season,
+    all_conference_clubs_have_fixtures,
+    conference_structure_is_well_formed,
+    derby_clubs_are_known,
+    played_rows_consistent,
 )
 INTERMEDIATE_CHECKS: tuple[Check, ...] = (no_future_leakage,)
 MART_CHECKS: tuple[Check, ...] = (features_not_null, mart_matches_staging)

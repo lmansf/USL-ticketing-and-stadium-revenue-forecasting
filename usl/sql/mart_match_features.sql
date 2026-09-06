@@ -8,10 +8,12 @@
 -- EXACTLY usl.features.definitions.mart_columns(), in that order;
 -- tests/test_features.py enforces both directions.
 --
--- One row per stg_matches row. Home matches only is automatic - every match
--- has exactly one home club - and unplayed fixtures are kept with attendance
--- NULL and is_played = false, because forecasts for remaining home matches
--- need their features. Training filters on is_played.
+-- One row per stg_matches row that is not void. Home matches only is
+-- automatic - every match has exactly one home club - and unplayed fixtures
+-- are kept with attendance NULL and is_played = false, because forecasts for
+-- remaining home matches need their features. A void fixture (cancelled,
+-- never to be played) is left out: it is not a match and gets no forecast.
+-- Training filters on is_played.
 --
 -- CALENDAR AND LAG
 --   The lag history is the club's PLAYED, NON-COVID home matches with a known
@@ -94,6 +96,7 @@ home_sequence AS (
             PARTITION BY home_club_id, season ORDER BY date DESC, match_id DESC
         ) = 1 AS is_final_home_match
     FROM stg_matches
+    WHERE NOT is_void
 ),
 derby_pairs AS (
     -- both directions, deduplicated, so the join below cannot fan out even if
@@ -146,6 +149,8 @@ joined AS (
       ON sa.club_id = m.away_club_id AND sa.season = m.season AND sa.date = m.date
     LEFT JOIN int_stakes kh
       ON kh.club_id = m.home_club_id AND kh.season = m.season AND kh.date = m.date
+    -- a void fixture is not a match: no features, no forecast
+    WHERE NOT m.is_void
 )
 SELECT
     j.match_id,

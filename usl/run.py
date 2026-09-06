@@ -352,6 +352,12 @@ def cmd_archive(args: argparse.Namespace, ctx: RunContext) -> int:
     print(f"  season ids: {', '.join(str(i) for i in ids) if ids else 'none'}")
     print(f"  oldest:     {summary['oldest'] or '-'}")
     print(f"  newest:     {summary['newest'] or '-'}")
+    if summary["quarantined"]:
+        # A .bad file is a response that failed validation and was kept for a
+        # look. It is never served, but it means a request was spent for nothing.
+        print(
+            f"  QUARANTINED: {summary['quarantined']} .bad file(s) - open them before pulling again"
+        )
     not_pulled = [row for row in config.read_seasons_csv() if row.season_id is None]
     if not_pulled:
         print(f"  not pulled yet ({config.SEASONS_CSV.name} rows with no season_id):")

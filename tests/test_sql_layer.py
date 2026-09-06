@@ -249,6 +249,10 @@ def test_failing_check_stops_before_the_next_tier(
     it just produces a second wave of failures that are downstream artefacts of
     the first. With 'Club C' missing from the alias file the staging tier fails
     naming that string, and int_standings is never built.
+
+    Within the tier the cascade is reported, not hidden: club_c's fixtures
+    carry a null club_id, so the club-season also reads as fixtureless, and
+    that check's hint says to fix the alias first rather than delete the row.
     """
     without_c = club_aliases[club_aliases["raw_name"] != "Club C"]
     write_reference_csvs(tmp_path, monkeypatch, aliases=without_c, club_rows=tiny_clubs)
@@ -256,8 +260,11 @@ def test_failing_check_stops_before_the_next_tier(
     with pytest.raises(CheckFailure) as excinfo:
         runner.run_sql_layer(con)
     message = str(excinfo.value)
-    assert message.startswith("1 check(s) failed in staging: ['all_clubs_mapped']")
+    assert message.startswith(
+        "2 check(s) failed in staging: ['all_clubs_mapped', 'all_conference_clubs_have_fixtures']"
+    )
     assert "Club C" in message
+    assert "fix all_clubs_mapped first" in message
     assert "\n" not in message  # one line, so it reads in the run log
     assert table_exists(con, "stg_matches")
     assert not table_exists(con, "int_standings")
@@ -281,7 +288,8 @@ def test_two_failures_in_one_tier_are_reported_together(
         runner.run_sql_layer(con)
     message = str(excinfo.value)
     assert message.startswith(
-        "2 check(s) failed in staging: ['all_clubs_mapped', 'all_club_seasons_have_conference']"
+        "3 check(s) failed in staging: ['all_clubs_mapped', "
+        "'all_club_seasons_have_conference', 'all_conference_clubs_have_fixtures']"
     )
     assert "club_d" in message
 
@@ -304,10 +312,10 @@ def test_all_check_results_are_logged_not_only_failures(
         "SELECT check_name, tier, passed FROM check_log WHERE run_id = ? ORDER BY checked_at",
         [ctx.run_id],
     ).fetchall()
-    assert len(logged) == len(ALL_CHECKS) == 10
+    assert len(logged) == len(ALL_CHECKS) == 14
     assert [name for name, _, _ in logged] == [c.__name__ for c in ALL_CHECKS]
     assert all(passed for _, _, passed in logged)
-    assert [tier for _, tier, _ in logged] == ["staging"] * 7 + ["intermediate"] + ["mart"] * 2
+    assert [tier for _, tier, _ in logged] == ["staging"] * 11 + ["intermediate"] + ["mart"] * 2
 
 
 def test_failed_checks_are_logged_and_later_tiers_are_not_run(

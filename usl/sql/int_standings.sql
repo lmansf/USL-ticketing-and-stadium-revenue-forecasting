@@ -87,14 +87,16 @@ running AS (
 ),
 fixtures AS (
     -- every (season, conference, club_id, date) on which a club has a fixture,
-    -- played or not, with the conference taken from the club-season
+    -- played or not but never void, with the conference taken from the club-season
     SELECT m.season, c.conference, m.home_club_id AS club_id, m.date
     FROM stg_matches m
     JOIN stg_clubs c ON c.club_id = m.home_club_id AND c.season = m.season
+    WHERE NOT m.is_void
     UNION
     SELECT m.season, c.conference, m.away_club_id, m.date
     FROM stg_matches m
     JOIN stg_clubs c ON c.club_id = m.away_club_id AND c.season = m.season
+    WHERE NOT m.is_void
 ),
 date_grid AS (
     SELECT DISTINCT season, conference, date FROM fixtures

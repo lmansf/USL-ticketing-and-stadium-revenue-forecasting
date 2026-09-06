@@ -196,6 +196,32 @@ DROP_COVID: bool = True
 
 
 # --------------------------------------------------------------------------
+# Match status
+# --------------------------------------------------------------------------
+
+# The status values the provider is known to send, compared lower-cased and
+# trimmed. A value outside this set stops the transform naming it
+# (checks.played_rows_consistent): a renamed status would otherwise quietly
+# un-play every match it touched, and every other check would still pass.
+KNOWN_MATCH_STATUSES: tuple[str, ...] = (
+    "complete",
+    "incomplete",
+    "suspended",
+    "postponed",
+    "canceled",
+    "cancelled",
+)
+
+# Statuses that mean a fixture will never be played. JUDGEMENT CALL: raw never
+# deletes and staging never drops, so such a row stays in stg_matches flagged
+# is_void, and is then left out of everything that counts fixtures - the
+# standings grid, matches_remaining, the mart, and the forecasts. A suspended
+# or postponed fixture is NOT void: it is expected to be replayed and its row
+# is updated when it is. See docs/reference/build-decisions.md, phase 06.
+VOID_MATCH_STATUSES: tuple[str, ...] = ("canceled", "cancelled")
+
+
+# --------------------------------------------------------------------------
 # Standings and stakes
 # --------------------------------------------------------------------------
 
