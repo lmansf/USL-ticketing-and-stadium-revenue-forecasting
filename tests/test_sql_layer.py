@@ -304,10 +304,10 @@ def test_all_check_results_are_logged_not_only_failures(
         "SELECT check_name, tier, passed FROM check_log WHERE run_id = ? ORDER BY checked_at",
         [ctx.run_id],
     ).fetchall()
-    assert len(logged) == len(ALL_CHECKS) == 9
+    assert len(logged) == len(ALL_CHECKS) == 10
     assert [name for name, _, _ in logged] == [c.__name__ for c in ALL_CHECKS]
     assert all(passed for _, _, passed in logged)
-    assert [tier for _, tier, _ in logged] == ["staging"] * 6 + ["intermediate"] + ["mart"] * 2
+    assert [tier for _, tier, _ in logged] == ["staging"] * 7 + ["intermediate"] + ["mart"] * 2
 
 
 def test_failed_checks_are_logged_and_later_tiers_are_not_run(

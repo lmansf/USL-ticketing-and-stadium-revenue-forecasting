@@ -146,11 +146,14 @@ Tunables reach the static SQL through a one-row `ref_config` table (COVID window
 match timezone, relegation assumption, playoff fallback) built by
 `usl/transform/reference.py`, so nothing is string-formatted into SQL.
 
-Checks: the seven the guide lists, plus `one_match_per_club_per_date` (a
-doubleheader or a double-ingested season silently corrupts the standings window)
-and `all_club_seasons_have_conference` (a club-season missing from
-`club_conference.csv` would otherwise drop out of `int_standings` on an inner join
-with no error). Collected within a tier, stopped between tiers, every result
+Checks: the seven the guide lists, plus three that mutation testing showed were
+needed: `one_match_per_club_per_date` (a doubleheader or a double-ingested season
+silently corrupts the standings window), `all_club_seasons_have_conference` (a
+club-season missing from `club_conference.csv` would otherwise drop out of
+`int_standings` on an inner join with no error), and
+`one_conference_per_club_season` (a club-season listed twice produces no null
+anywhere; it inflates `n_clubs`, shifts both lines, and doubles that club's mart
+rows). Ten in all, collected within a tier, stopped between tiers, every result
 logged.
 
 ## Phase 06 - features

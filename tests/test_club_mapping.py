@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import duckdb
 import pandas as pd
+from conftest import stage_frames
 
 from usl.config import SQL_DIR
 from usl.load.raw import RAW_COLUMNS, ensure_raw_tables
@@ -266,3 +267,46 @@ def test_provider_ids_and_display_names_both_map(
         ("club_c", 2024, "East"),
         ("club_d", 2024, "East"),
     ]
+
+
+def test_duplicate_club_season_is_named_before_it_can_fan_out(
+    con: duckdb.DuckDBPyConnection, tiny_season: pd.DataFrame, tiny_clubs: pd.DataFrame
+) -> None:
+    """A (club_id, season) listed twice in club_conference.csv produces no null.
+
+    It fans the standings grid out instead - the club sits in the table twice
+    and n_clubs is inflated, which shifts the playoff and relegation lines - and
+    doubles that club's matches in the mart. Neither the alias check nor the
+    conference check sees it. one_conference_per_club_season names the pair at
+    the staging tier, and this test shows the inflation it would otherwise
+    cause two tiers down.
+    """
+    from usl.transform.checks import one_conference_per_club_season
+    from usl.transform.runner import materialise
+
+    duplicated = pd.concat([tiny_clubs, tiny_clubs.iloc[[0]]], ignore_index=True)
+    stage_frames(con, tiny_season, duplicated)
+
+    result = one_conference_per_club_season(con)
+    assert not result.passed
+    assert result.metadata["duplicated"] == [
+        {"club_id": "club_a", "season": 2024, "rows": 2, "conferences": ["East"]}
+    ]
+    assert "club_conference.csv" in result.metadata["hint"]
+
+    # The silent damage the check exists to prevent: five "clubs" in a four-club table.
+    materialise(con, "int_standings")
+    row = con.execute("SELECT max(n_clubs) FROM int_standings").fetchone()
+    assert row is not None and row[0] == 5
+
+
+def test_unique_club_seasons_pass(
+    con: duckdb.DuckDBPyConnection, tiny_season: pd.DataFrame, tiny_clubs: pd.DataFrame
+) -> None:
+    """One row per club-season is the normal case and passes with an empty list."""
+    from usl.transform.checks import one_conference_per_club_season
+
+    stage_frames(con, tiny_season, tiny_clubs)
+    result = one_conference_per_club_season(con)
+    assert result.passed
+    assert result.metadata == {"n_duplicated": 0, "duplicated": []}

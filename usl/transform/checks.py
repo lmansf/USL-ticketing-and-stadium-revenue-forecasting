@@ -304,6 +304,58 @@ def all_club_seasons_have_conference(con: duckdb.DuckDBPyConnection) -> CheckRes
     )
 
 
+def one_conference_per_club_season(con: duckdb.DuckDBPyConnection) -> CheckResult:
+    """Fail when a (club_id, season) appears more than once in stg_clubs.
+
+    A duplicated row in club_conference.csv produces no null anywhere, so
+    all_clubs_mapped and all_club_seasons_have_conference both pass. What it
+    does instead is fan out: the standings grid gets the club twice (n_clubs
+    inflated, the playoff and relegation lines shifted one place) and the
+    mart's join to int_standings doubles that club's matches, which
+    mart_matches_staging would report as a bare count two tiers later without
+    naming the cause. This names it, at the tier where it can be fixed with
+    one line in the CSV.
+
+    Args:
+        con: Open connection.
+
+    Returns:
+        CheckResult with the duplicated (club_id, season) pairs and the
+        conferences they were given in metadata.
+    """
+    rows = con.execute(
+        """
+        SELECT club_id, season, count(*) AS n, list(DISTINCT conference ORDER BY conference)
+        FROM stg_clubs
+        GROUP BY club_id, season
+        HAVING count(*) > 1
+        ORDER BY season, club_id
+        """
+    ).fetchall()
+    return CheckResult(
+        "one_conference_per_club_season",
+        "staging",
+        not rows,
+        {
+            "n_duplicated": len(rows),
+            "duplicated": [
+                {
+                    "club_id": r[0],
+                    "season": r[1],
+                    "rows": int(r[2]),
+                    "conferences": [str(c) for c in r[3]],
+                }
+                for r in rows[:_LIST_LIMIT]
+            ],
+            **(
+                {"hint": "one row per (club_id, season) in usl/ref/club_conference.csv"}
+                if rows
+                else {}
+            ),
+        },
+    )
+
+
 def no_future_leakage(con: duckdb.DuckDBPyConnection) -> CheckResult:
     """Fail when int_standings uses a result on or after the row's own date.
 
@@ -440,6 +492,7 @@ STAGING_CHECKS: tuple[Check, ...] = (
     one_row_per_match,
     one_match_per_club_per_date,
     all_club_seasons_have_conference,
+    one_conference_per_club_season,
 )
 INTERMEDIATE_CHECKS: tuple[Check, ...] = (no_future_leakage,)
 MART_CHECKS: tuple[Check, ...] = (features_not_null, mart_matches_staging)

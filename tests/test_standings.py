@@ -23,7 +23,7 @@ from pathlib import Path
 
 import duckdb
 import pandas as pd
-from conftest import stage_frames
+from conftest import stage_frames, with_unplayed
 
 from usl import config
 from usl.features.definitions import all_features
@@ -112,16 +112,6 @@ def materialise_mutated_standings(con: duckdb.DuckDBPyConnection, old: str, new:
     sql = (config.SQL_DIR / "int_standings.sql").read_text(encoding="utf-8")
     assert sql.count(old) == 1, f"expected exactly one occurrence of {old!r} in int_standings.sql"
     con.execute("CREATE OR REPLACE TABLE int_standings AS " + sql.replace(old, new))
-
-
-def with_unplayed(frame: pd.DataFrame, match_ids: list[str]) -> pd.DataFrame:
-    """Blank the result and gate of the named fixtures, as unplayed rows."""
-    out = frame.copy()
-    unplayed = out["match_id"].isin(match_ids)
-    for col in ("home_goals", "away_goals", "attendance"):
-        out[col] = pd.array(out[col].tolist(), dtype="Int64")
-        out.loc[unplayed, col] = pd.NA
-    return out
 
 
 def standings_on(con: duckdb.DuckDBPyConnection, date: str) -> dict[str, dict[str, object]]:

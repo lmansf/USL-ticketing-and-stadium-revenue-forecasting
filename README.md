@@ -16,7 +16,7 @@ difference in error is attributable to those features and nothing else.
 
 The build guide under `docs/` has been worked through from phase 00 to phase 09.
 Every stub under `usl/` is implemented, every test is real, `make check` is green on
-a fresh clone, and the whole pipeline - archive, load, six SQL models, nine checks,
+a fresh clone, and the whole pipeline - archive, load, six SQL models, ten checks,
 both models plus the naive baseline, extracts, the weekly command, seven demo
 scripts - runs end to end from the committed archive with no API key.
 
@@ -185,7 +185,7 @@ Then run the pipeline from the archive:
 
 ```
 make backfill      # 380 EPL matches from data/raw_archive/, no key needed
-make transform     # six SQL models, nine checks
+make transform     # six SQL models, ten checks
 make train         # both models, the naive baseline, seed variance, CV
 make export        # CSVs into tableau/extracts/
 ```
@@ -333,7 +333,7 @@ comparison can be read against noise instead of against a single point estimate.
 |   +-- ingest/           footystats.py (API client), archive.py (durable raw store)
 |   +-- load/             raw.py - upsert into raw_matches
 |   +-- sql/              The SQL layer, six .sql files, one per model
-|   +-- transform/        SQL runner, nine data-quality checks, reference-table loader
+|   +-- transform/        SQL runner, ten data-quality checks, reference-table loader
 |   +-- features/         Feature list definitions shared by both models
 |   +-- models/           train.py, metrics.py
 |   +-- export/           Tableau extract writer

@@ -16,7 +16,7 @@ import datetime as dt
 import duckdb
 import pandas as pd
 import pytest
-from conftest import stage_frames
+from conftest import stage_frames, with_unplayed
 
 from usl import config
 from usl.features.definitions import (
@@ -60,16 +60,6 @@ def matches(rows: list[tuple[object, ...]]) -> pd.DataFrame:
 def clubs(rows: list[tuple[object, ...]]) -> pd.DataFrame:
     """tiny_clubs-shaped rows."""
     return pd.DataFrame(rows, columns=CLUB_COLUMNS)
-
-
-def with_unplayed(frame: pd.DataFrame, match_ids: list[str]) -> pd.DataFrame:
-    """Blank the result and gate of the named fixtures, as unplayed rows."""
-    out = frame.copy()
-    unplayed = out["match_id"].isin(match_ids)
-    for col in ("home_goals", "away_goals", "attendance"):
-        out[col] = pd.array(out[col].tolist(), dtype="Int64")
-        out.loc[unplayed, col] = pd.NA
-    return out
 
 
 def build_mart(

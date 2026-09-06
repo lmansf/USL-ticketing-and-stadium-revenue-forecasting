@@ -259,6 +259,28 @@ def stage_frames(
     register_reference_frame(con, "derbies", derbies)
 
 
+def with_unplayed(frame: pd.DataFrame, match_ids: list[str]) -> pd.DataFrame:
+    """Blank the result and gate of the named fixtures, so they read as unplayed.
+
+    Goals and attendance become nullable integers with pd.NA on the named
+    rows; stage_frames then marks them is_played = false with a null
+    attendance, which is how a future fixture arrives from the real staging SQL.
+
+    Args:
+        frame: tiny_season-shaped rows.
+        match_ids: The fixtures to leave unplayed.
+
+    Returns:
+        A copy with those rows blanked.
+    """
+    out = frame.copy()
+    unplayed = out["match_id"].isin(match_ids)
+    for col in ("home_goals", "away_goals", "attendance"):
+        out[col] = pd.array(out[col].tolist(), dtype="Int64")
+        out.loc[unplayed, col] = pd.NA
+    return out
+
+
 @pytest.fixture
 def example_archive_path() -> Path:
     """The committed example-key response: EPL 2018/19, season id 1625, 380 matches."""
