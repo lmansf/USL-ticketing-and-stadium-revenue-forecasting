@@ -388,7 +388,9 @@ def test_phantom_club_season_is_named_before_it_moves_the_line(
 
     result = all_conference_clubs_have_fixtures(con)
     assert not result.passed
-    assert result.metadata["without_fixtures"] == [{"club_id": "club_e", "season": 2024}]
+    assert result.metadata["without_fixtures"] == [
+        {"club_id": "club_e", "season": 2024, "conference": "East"}
+    ]
     assert "club_conference.csv" in result.metadata["hint"]
 
     # the silent damage the check prevents
@@ -504,3 +506,130 @@ def test_status_drift_is_named_rather_than_un_playing_the_season(
     assert result.metadata["inconsistent_statuses"] == {"finished": 1}
     assert result.metadata["unknown_statuses"] == {"finished": 1}
     assert "KNOWN_MATCH_STATUSES" in result.metadata["hint"]
+
+
+def test_reference_rows_ahead_of_the_data_are_not_phantoms(
+    con: duckdb.DuckDBPyConnection, tiny_season: pd.DataFrame, tiny_clubs: pd.DataFrame
+) -> None:
+    """A conference-season with no fixture at all is data not yet pulled, not a phantom.
+
+    The USL rows sit in club_conference.csv before a USL match is archived.
+    The standings grid takes its dates from fixtures, so such a conference has
+    no rows and moves no line; the check reports it and passes. A club pasted
+    into a conference that IS playing still fails.
+    """
+    from usl.transform.checks import all_conference_clubs_have_fixtures
+    from usl.transform.runner import materialise
+
+    ahead = pd.concat(
+        [
+            tiny_clubs,
+            pd.DataFrame(
+                [
+                    ("club_x", 2025, "East", "Club X"),  # next season, nothing pulled
+                    ("club_y", 2025, "East", "Club Y"),
+                    ("club_w", 2024, "West", "Club W"),  # this season, other conference
+                ],
+                columns=tiny_clubs.columns,
+            ),
+        ],
+        ignore_index=True,
+    )
+    stage_frames(con, tiny_season, ahead)
+    result = all_conference_clubs_have_fixtures(con)
+    assert result.passed
+    assert result.metadata["conference_seasons_without_fixtures"] == [
+        {"season": 2024, "conference": "West", "n_clubs": 1},
+        {"season": 2025, "conference": "East", "n_clubs": 2},
+    ]
+
+    materialise(con, "int_standings")
+    rows = con.execute(
+        "SELECT conference, max(n_clubs), count(*) FROM int_standings GROUP BY 1 ORDER BY 1"
+    ).fetchall()
+    assert rows == [("East", 4, 16)]  # four clubs on three dates plus the snapshot; no West
+
+    pasted = pd.concat(
+        [ahead, pd.DataFrame([("club_e", 2024, "East", "Club E")], columns=tiny_clubs.columns)],
+        ignore_index=True,
+    )
+    stage_frames(con, tiny_season, pasted)
+    result = all_conference_clubs_have_fixtures(con)
+    assert not result.passed
+    assert [r["club_id"] for r in result.metadata["without_fixtures"]] == ["club_e"]
+
+
+def test_club_filed_under_the_wrong_conference_is_named_by_its_schedule(
+    con: duckdb.DuckDBPyConnection,
+) -> None:
+    """The one club_conference.csv error no other check can see.
+
+    A club filed under the wrong conference is present, mapped, playing, and
+    listed once. Its fixtures give it away: a conference is the set of clubs
+    that mostly play each other. Four East clubs play a round robin, three
+    West clubs play theirs, and one cross-conference match is thrown in so a
+    balanced club is not confused with a misfiled one.
+    """
+    from usl.transform.checks import conference_membership_is_plausible
+
+    columns = list(
+        (
+            "match_id",
+            "season",
+            "date",
+            "home_club_id",
+            "away_club_id",
+            "home_goals",
+            "away_goals",
+            "attendance",
+        )
+    )
+    matches = pd.DataFrame(
+        [
+            ("e1", 2024, "2024-03-02", "club_a", "club_b", 1, 0, 1000),
+            ("e2", 2024, "2024-03-02", "club_c", "club_g", 1, 0, 1000),
+            ("e3", 2024, "2024-03-09", "club_a", "club_c", 1, 0, 1000),
+            ("e4", 2024, "2024-03-09", "club_b", "club_g", 1, 0, 1000),
+            ("e5", 2024, "2024-03-16", "club_a", "club_g", 1, 0, 1000),
+            ("e6", 2024, "2024-03-16", "club_b", "club_c", 1, 0, 1000),
+            ("w1", 2024, "2024-03-02", "club_d", "club_e", 1, 0, 1000),
+            ("w2", 2024, "2024-03-09", "club_d", "club_f", 1, 0, 1000),
+            ("w3", 2024, "2024-03-16", "club_e", "club_f", 1, 0, 1000),
+            ("x1", 2024, "2024-03-23", "club_a", "club_d", 1, 0, 1000),  # cross-conference
+        ],
+        columns=columns,
+    )
+    clubs = pd.DataFrame(
+        [
+            ("club_a", 2024, "East", "A"),
+            ("club_b", 2024, "East", "B"),
+            ("club_c", 2024, "East", "C"),
+            ("club_g", 2024, "East", "G"),
+            ("club_d", 2024, "West", "D"),
+            ("club_e", 2024, "West", "E"),
+            ("club_f", 2024, "West", "F"),
+        ],
+        columns=["club_id", "season", "conference", "display_name"],
+    )
+    stage_frames(con, matches, clubs)
+    assert conference_membership_is_plausible(con).passed
+
+    misfiled = clubs.copy()
+    misfiled.loc[misfiled["club_id"] == "club_c", "conference"] = "West"
+    stage_frames(con, matches, misfiled)
+    result = conference_membership_is_plausible(con)
+    assert not result.passed
+    assert result.metadata["implausible"] == [
+        {
+            "season": 2024,
+            "club_id": "club_c",
+            "conference": "West",
+            "fixtures_in_conference": 0,
+            "fixtures_outside": 3,
+        }
+    ]
+    assert "club_conference.csv" in result.metadata["hint"]
+
+    # a void fixture is not evidence either way
+    stage_frames(con, matches, misfiled, void=["e2", "e3", "e6"])
+    assert conference_membership_is_plausible(con).passed

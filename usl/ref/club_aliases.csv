@@ -39,3 +39,83 @@ Fulham,fulham,display name as returned by the API in 2026
 Brighton & Hove Albion,brighton,display name as returned by the API in 2026
 Huddersfield Town,huddersfield_town,display name as returned by the API in 2026
 Wolverhampton Wanderers,wolverhampton_wanderers,display name as returned by the API in 2026
+Atlanta United 2,atlanta_united_2,display name; USL Championship 2018-2022
+Atlanta United II,atlanta_united_2,alternative spelling seen on standings pages and in provider listings
+Austin Bold FC,austin_bold,display name; USL Championship 2019-2021
+Birmingham Legion FC,birmingham_legion,display name; USL Championship 2019-2025
+Charleston Battery,charleston_battery,display name; USL Championship 2017-2025
+Charlotte Independence,charlotte_independence,display name; USL Championship 2017-2021
+Colorado Springs Switchbacks FC,colorado_springs_switchbacks,display name; USL Championship 2017-2025
+Detroit City FC,detroit_city,display name; USL Championship 2022-2025
+El Paso Locomotive FC,el_paso_locomotive,display name; USL Championship 2019-2025
+FC Cincinnati,fc_cincinnati,display name; USL Championship 2017-2018
+Tulsa Roughnecks FC,fc_tulsa,display name; USL Championship 2017-2019; renamed FC Tulsa in 2020 - same club; same club_id
+FC Tulsa,fc_tulsa,display name; USL Championship 2020-2025; formerly Tulsa Roughnecks FC - same club; same club_id
+Tulsa Roughnecks,fc_tulsa,alternative spelling seen on standings pages and in provider listings
+Fresno FC,fresno_fc,display name; USL Championship 2018-2019
+Hartford Athletic,hartford_athletic,display name; USL Championship 2019-2025
+Indy Eleven,indy_eleven,display name; USL Championship 2018-2025
+LA Galaxy II,la_galaxy_ii,display name; USL Championship 2017-2022
+Los Angeles Galaxy II,la_galaxy_ii,alternative spelling seen on standings pages and in provider listings
+Las Vegas Lights FC,las_vegas_lights,display name; USL Championship 2018-2025
+Lexington SC,lexington_sc,display name; USL Championship 2025
+Loudoun United FC,loudoun_united,display name; USL Championship 2019-2025
+Louisville City FC,louisville_city,display name; USL Championship 2017-2025
+Memphis 901 FC,memphis_901,display name; USL Championship 2019-2024
+Miami FC,miami_fc,display name; USL Championship 2020-2025
+The Miami FC,miami_fc,alternative spelling seen on standings pages and in provider listings
+Monterey Bay FC,monterey_bay,display name; USL Championship 2022-2025
+Monterey Bay F.C.,monterey_bay,alternative spelling seen on standings pages and in provider listings
+Nashville SC,nashville_sc,display name; USL Championship 2018-2019
+New Mexico United,new_mexico_united,display name; USL Championship 2019-2025
+New York Red Bulls II,new_york_red_bulls_ii,display name; USL Championship 2017-2022
+New York Red Bulls 2,new_york_red_bulls_ii,alternative spelling seen on standings pages and in provider listings
+North Carolina FC,north_carolina_fc,display name; USL Championship 2018-2025
+Oakland Roots SC,oakland_roots,display name; USL Championship 2021-2025
+Oakland Roots,oakland_roots,alternative spelling seen on standings pages and in provider listings
+OKC Energy FC,okc_energy,display name; USL Championship 2017-2021
+Oklahoma City Energy FC,okc_energy,alternative spelling seen on standings pages and in provider listings
+Orange County SC,orange_county_sc,display name; USL Championship 2017-2025
+Orlando City B,orlando_city_b,display name; USL Championship 2017
+Ottawa Fury FC,ottawa_fury,display name; USL Championship 2017-2019
+Harrisburg City Islanders,penn_fc,display name; USL Championship 2017; renamed Penn FC in 2018 - same club; same club_id
+Penn FC,penn_fc,display name; USL Championship 2018; formerly Harrisburg City Islanders - same club; same club_id
+Bethlehem Steel FC,philadelphia_union_ii,display name; USL Championship 2017-2019; renamed Philadelphia Union II in 2020 - same club; same club_id
+Philadelphia Union II,philadelphia_union_ii,display name; USL Championship 2020; formerly Bethlehem Steel FC - same club; same club_id
+Bethlehem Steel,philadelphia_union_ii,alternative spelling seen on standings pages and in provider listings
+Philadelphia Union 2,philadelphia_union_ii,alternative spelling seen on standings pages and in provider listings
+Phoenix Rising FC,phoenix_rising,display name; USL Championship 2017-2025
+Pittsburgh Riverhounds,pittsburgh_riverhounds,display name; USL Championship 2017; renamed Pittsburgh Riverhounds SC in 2018 - same club; same club_id
+Pittsburgh Riverhounds SC,pittsburgh_riverhounds,display name; USL Championship 2018-2025; formerly Pittsburgh Riverhounds - same club; same club_id
+Riverhounds SC,pittsburgh_riverhounds,alternative spelling seen on standings pages and in provider listings
+Portland Timbers 2,portland_timbers_2,display name; USL Championship 2017-2020
+Portland Timbers II,portland_timbers_2,alternative spelling seen on standings pages and in provider listings
+Real Monarchs SLC,real_monarchs,display name; USL Championship 2017-2018; renamed Real Monarchs in 2019 - same club; same club_id
+Real Monarchs,real_monarchs,display name; USL Championship 2019-2021; formerly Real Monarchs SLC - same club; same club_id
+Reno 1868 FC,reno_1868,display name; USL Championship 2017-2020
+Rhode Island FC,rhode_island_fc,display name; USL Championship 2024-2025
+Richmond Kickers,richmond_kickers,display name; USL Championship 2017-2018
+Rio Grande Valley FC Toros,rio_grande_valley,display name; USL Championship 2017-2019; renamed Rio Grande Valley FC in 2020 - same club; same club_id
+Rio Grande Valley FC,rio_grande_valley,display name; USL Championship 2020-2023; formerly Rio Grande Valley FC Toros - same club; same club_id
+RGV FC Toros,rio_grande_valley,alternative spelling seen on standings pages and in provider listings
+Rio Grande Valley Toros,rio_grande_valley,alternative spelling seen on standings pages and in provider listings
+Rochester Rhinos,rochester_rhinos,display name; USL Championship 2017
+Sacramento Republic FC,sacramento_republic,display name; USL Championship 2017-2025
+Saint Louis FC,saint_louis_fc,display name; USL Championship 2017-2020
+San Antonio FC,san_antonio_fc,display name; USL Championship 2017-2025
+San Diego Loyal SC,san_diego_loyal,display name; USL Championship 2020-2023
+San Diego Loyal,san_diego_loyal,alternative spelling seen on standings pages and in provider listings
+Swope Park Rangers,sporting_kc_ii,display name; USL Championship 2017-2019; renamed Sporting Kansas City II in 2020 - same club; same club_id
+Sporting Kansas City II,sporting_kc_ii,display name; USL Championship 2020-2021; formerly Swope Park Rangers - same club; same club_id
+Sporting KC II,sporting_kc_ii,alternative spelling seen on standings pages and in provider listings
+Swope Park Rangers SC,sporting_kc_ii,alternative spelling seen on standings pages and in provider listings
+Seattle Sounders FC 2,tacoma_defiance,display name; USL Championship 2017-2018; renamed Tacoma Defiance in 2019 - same club; same club_id
+Tacoma Defiance,tacoma_defiance,display name; USL Championship 2019-2021; formerly Seattle Sounders FC 2 - same club; same club_id
+Seattle Sounders 2,tacoma_defiance,alternative spelling seen on standings pages and in provider listings
+S2,tacoma_defiance,alternative spelling seen on standings pages and in provider listings
+Tampa Bay Rowdies,tampa_bay_rowdies,display name; USL Championship 2017-2025
+Toronto FC II,toronto_fc_ii,display name; USL Championship 2017-2018
+Toronto FC 2,toronto_fc_ii,alternative spelling seen on standings pages and in provider listings
+Vancouver Whitecaps FC 2,vancouver_whitecaps_2,display name; USL Championship 2017
+Whitecaps FC 2,vancouver_whitecaps_2,alternative spelling seen on standings pages and in provider listings
+Vancouver Whitecaps 2,vancouver_whitecaps_2,alternative spelling seen on standings pages and in provider listings

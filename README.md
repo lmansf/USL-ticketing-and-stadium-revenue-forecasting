@@ -16,7 +16,7 @@ difference in error is attributable to those features and nothing else.
 
 The build guide under `docs/` has been worked through from phase 00 to phase 09.
 Every stub under `usl/` is implemented, every test is real, `make check` is green on
-a fresh clone, and the whole pipeline - archive, load, six SQL models, fourteen checks,
+a fresh clone, and the whole pipeline - archive, load, six SQL models, fifteen checks,
 both models plus the naive baseline, extracts, the weekly command, seven demo
 scripts - runs end to end from the committed archive with no API key.
 
@@ -185,7 +185,7 @@ Then run the pipeline from the archive:
 
 ```
 make backfill      # 380 EPL matches from data/raw_archive/, no key needed
-make transform     # six SQL models, fourteen checks
+make transform     # six SQL models, fifteen checks
 make train         # both models, the naive baseline, seed variance, CV
 make export        # CSVs into tableau/extracts/
 ```
@@ -247,6 +247,7 @@ Every check passed on the latest run:
 | `all_club_seasons_have_conference` | staging | yes |
 | `all_clubs_mapped` | staging | yes |
 | `all_conference_clubs_have_fixtures` | staging | yes |
+| `conference_membership_is_plausible` | staging | yes |
 | `conference_structure_is_well_formed` | staging | yes |
 | `derby_clubs_are_known` | staging | yes |
 | `matches_are_fresh` | staging | yes |
@@ -338,7 +339,7 @@ comparison can be read against noise instead of against a single point estimate.
 |   +-- ingest/           footystats.py (API client), archive.py (durable raw store)
 |   +-- load/             raw.py - upsert into raw_matches
 |   +-- sql/              The SQL layer, six .sql files, one per model
-|   +-- transform/        SQL runner, fourteen data-quality checks, reference-table loader
+|   +-- transform/        SQL runner, fifteen data-quality checks, reference-table loader
 |   +-- features/         Feature list definitions shared by both models
 |   +-- models/           train.py, metrics.py
 |   +-- export/           Tableau extract writer
@@ -406,12 +407,17 @@ licence, and a machine that stays on.
    and paste each season's id into `usl/ref/seasons.csv` (the rows are there with
    blank ids). **Delete the EPL row and run `make clean-db`** so one database holds
    one league.
-3. Fill `usl/ref/club_aliases.csv` and `usl/ref/club_conference.csv` for the USL
-   clubs. The transform tells you exactly which strings are unmapped, and which
-   club-seasons have no conference, so this is a loop of running `make transform`
-   and pasting. Add a row per season and conference to
-   `usl/ref/conference_structure.csv` with that season's playoff spots. Set
-   `config.MATCH_TZ` to a US zone.
+3. The USL reference rows are already in. `usl/ref/club_conference.csv` holds
+   every USL Championship club-season from 2017 to 2025 with its conference and
+   display name, `usl/ref/conference_structure.csv` the playoff line for each,
+   and `usl/ref/club_aliases.csv` a name row per club. What is missing is the
+   provider's numeric club ids, which only the data can supply: after the first
+   backfill run `python scripts/propose_aliases.py`, read the rows it proposes,
+   and run it again with `--write`. Anything it cannot match it lists by name.
+   Then `make transform`: the checks name any club-season the conference lists
+   got wrong, and `conference_membership_is_plausible` names a club filed under
+   the wrong conference from its fixture list. Add the 2026 rows once the
+   season's field is settled, and set `config.MATCH_TZ` to a US zone.
 4. `make backfill`. Also pull `league-tables` per season while you can (the client
    has `fetch_league_table`); it is the published-table cross-check for the
    standings, which on the EPL season is done by the test suite instead.

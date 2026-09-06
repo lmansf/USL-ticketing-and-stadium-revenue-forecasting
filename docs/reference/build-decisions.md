@@ -138,6 +138,24 @@ name, so a 2017 match would render under a 2026 brand; a name that lives on the
 club-season row is the slowly-changing-dimension shape that handles a rebrand
 without touching history.
 
+**The USL reference rows.** Written before a USL match was archived, so the
+subscription month starts with the mapping layer in place rather than being spent
+on it. `club_conference.csv` holds every USL Championship club-season from 2017 to
+2025 with the conference and the display name of that year, `conference_structure.csv`
+the playoff line of every conference-season, and `club_aliases.csv` a name row per
+club covering its current and former names. The provider's numeric ids are not
+knowable in advance; `scripts/propose_aliases.py` derives those rows from the
+archive through the name rows, loosely matched for the proposal and exactly joined
+afterwards. Three things make a from-memory conference list safe to run: the
+existing checks name a club the list missed or a club it includes that never
+played; a new check, `conference_membership_is_plausible`, names a club filed under
+the wrong conference from its fixture list, which is the one error nothing else
+could see; and `tests/test_reference_data.py` pins the size of every
+conference-season so an accidental edit is caught. 2021 is filed by division
+(Atlantic, Central, Mountain, Pacific) because that is the field a club was ranked
+against and the line it chased; 2020's COVID groups are approximated at the
+conference grain. 2026 is left for when its field is settled.
+
 ## Phase 04 - standings
 
 **Conference rank, full field.** Exercise 4.2 is resolved in favour of the full
@@ -177,7 +195,7 @@ Tunables reach the static SQL through a one-row `ref_config` table (COVID window
 match timezone, relegation assumption, playoff fallback) built by
 `usl/transform/reference.py`, so nothing is string-formatted into SQL.
 
-Checks: the seven the guide lists, plus seven that mutation testing and review
+Checks: the seven the guide lists, plus eight that mutation testing and review
 showed were needed. Three on the match data: `one_match_per_club_per_date` (a
 doubleheader or a double-ingested season silently corrupts the standings window),
 `all_club_seasons_have_conference` (a club-season missing from
@@ -195,9 +213,19 @@ an unmapped club string leaves its club-season fixtureless too),
 `conference_structure_is_well_formed` (a duplicated pair, a non-numeric spot count
 that `TRY_CAST` would quietly turn into the default, or more spots than clubs), and
 `derby_clubs_are_known` (a typo in `derbies.csv` is otherwise a derby that never
-fires). Fourteen in all, collected within a tier, stopped between tiers, every
-result logged. Hints name the file and the row to change, and a check whose
-failure would send you to the wrong file says so.
+fires). And one on the fixture list against the CSV:
+`conference_membership_is_plausible` fails a club-season that plays more fixtures
+against other conferences than its own, because a club filed under the wrong
+conference is present, mapped, playing, listed once, and ranked against the wrong
+field on every date. Fifteen in all, collected within a tier, stopped between
+tiers, every result logged. Hints name the file and the row to change, and a
+check whose failure would send you to the wrong file says so.
+
+A conference-season with no fixture at all is reference data written ahead of the
+data, not a phantom: the standings grid takes its dates from fixtures, so it has
+no rows and moves no line. `all_conference_clubs_have_fixtures` reports those and
+fails only a fixtureless club in a conference that is playing. That is what lets
+the USL rows sit in the CSVs while the example season runs.
 
 ## Phase 06 - features
 

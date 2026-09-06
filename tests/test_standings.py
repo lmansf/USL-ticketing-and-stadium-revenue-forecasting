@@ -748,8 +748,17 @@ def test_example_season_reproduces_the_published_final_table(
     ensure_log_tables(con)
     counts = runner.run_sql_layer(con, ctx)
     assert counts["stg_matches"] == 380
-    assert counts["stg_clubs"] == 20
     assert counts["mart_match_features"] == 380
+    # stg_clubs also carries the USL rows written ahead of their data; only the
+    # example season's twenty clubs have fixtures and only they reach the grid
+    epl_clubs = con.execute(
+        "SELECT count(*) FROM stg_clubs WHERE season = 2018 AND conference = 'Premier League'"
+    ).fetchone()
+    assert epl_clubs == (20,)
+    ranked = con.execute(
+        "SELECT count(DISTINCT club_id), count(DISTINCT conference) FROM int_standings"
+    )
+    assert ranked.fetchone() == (20, 1)
 
     unmapped = con.execute(
         "SELECT count(*) FROM stg_matches WHERE home_club_id IS NULL OR away_club_id IS NULL"

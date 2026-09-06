@@ -51,6 +51,21 @@ def check(condition: bool, what: str) -> bool:
     return condition
 
 
+def _git_status(path: Path) -> str | None:
+    """The porcelain status line of one file, '' when clean, None without git."""
+    try:
+        status = subprocess.run(
+            ["git", "status", "--porcelain", "--", str(path)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    return status.stdout.strip() if status.returncode == 0 else None
+
+
 def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
     command = [sys.executable, "-m", "usl.run", *args]
     print("$ " + " ".join(command[1:]))
@@ -130,6 +145,7 @@ def main() -> int:
     print(f"{ALIASES.relative_to(REPO_ROOT)}, run the transform, and watch the check name it.")
 
     original = ALIASES.read_bytes()
+    status_before = _git_status(ALIASES)
     ok = True
     with tempfile.TemporaryDirectory(prefix="usl-d3-") as tmp:
         try:
@@ -200,18 +216,14 @@ def main() -> int:
         )
         ok &= check(green.returncode == 0, "exit code 0 after the fix")
 
-    try:
-        status = subprocess.run(
-            ["git", "status", "--porcelain", "--", str(ALIASES)],
-            cwd=REPO_ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
+    # The demo leaves no trace in git: the file's status is whatever it was
+    # before, which during the subscription month may well be "modified".
+    status_after = _git_status(ALIASES)
+    if status_before is not None and status_after is not None:
+        ok &= check(
+            status_after == status_before,
+            f"git status of club_aliases.csv is unchanged by the demo ({status_before or 'clean'})",
         )
-        if status.returncode == 0:
-            ok &= check(status.stdout.strip() == "", "git status is clean for club_aliases.csv")
-    except OSError:
-        pass
 
     say("result")
     print(

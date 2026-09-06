@@ -1,5 +1,5 @@
 season,season_id,note
-2018,1625,EPL 2018/19 served by the free example key. NOT a USL season - it is the season the whole pipeline is built and tested against before subscribing. Before backfilling USL: delete this row and run make clean-db so one database holds one league.
+2018,1625,EPL 2018/19 served by the free example key. NOT a USL season - it is the season the whole pipeline is built and tested against before subscribing. Before backfilling USL: delete this row and run make clean-db so one database holds one league, then add a 2018 row for USL 2018 with its season_id from league-list - its club_conference and conference_structure rows are already in place.
 2017,,TODO during the subscription month: run python -m usl.run league-list and paste the USL Championship 2017 season_id here
 2019,,TODO during the subscription month: season_id from league-list
 2020,,TODO during the subscription month: season_id from league-list. COVID-affected - see config.COVID_START and COVID_END

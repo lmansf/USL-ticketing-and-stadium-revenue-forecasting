@@ -21,12 +21,43 @@ happens in SQL.
 
 ## What is in them right now
 
+Two leagues, side by side.
+
 The twenty clubs of the **English Premier League 2018/19** - the season the free
 `example` key serves and the one the pipeline was built against. It is not a USL
 season, and the file notes say so on every row. The single conference for that
 season is the whole league, so ranking within conference and ranking league-wide
 coincide; the two-conference case is covered by `tests/test_standings.py` on a
 fixture.
+
+Every **USL Championship club-season from 2017 to 2025**: 264 rows in
+`club_conference.csv` across 52 clubs, the conference and display name of the
+year on each, the playoff line for every conference-season in
+`conference_structure.csv`, and a name row per club (current and former names) in
+`club_aliases.csv`. These were written before a USL match was archived, from the
+league's published conference lists, so treat them as a careful draft rather
+than ground truth:
+
+- `tests/test_reference_data.py` pins the shape and the size of every
+  conference-season, so an accidental edit is caught here.
+- Once a season is pulled, the transform's checks do the rest:
+  `all_club_seasons_have_conference` names a club the lists missed,
+  `all_conference_clubs_have_fixtures` names a club they include that did not
+  play, and `conference_membership_is_plausible` names a club filed under the
+  wrong conference from its fixture list.
+- What the CSV cannot hold in advance is the provider's numeric club id, which
+  is the join key. `scripts/propose_aliases.py` derives those rows from the
+  archive through the name rows; run it after the first backfill.
+- 2021 was played in four divisions (Atlantic, Central, Mountain, Pacific) and
+  the division is the conference in that season, because it is the field a club
+  was ranked against and the line it chased. 2020's eight COVID groups are
+  approximated at the conference grain; the season sits inside the COVID window
+  regardless.
+- 2026, the season in progress, is not filled in. Its field is settled by the
+  time the subscription starts; add the rows then.
+
+A conference-season with no fixture at all is reported by the checks and not
+failed, so the USL rows do not break the example-season run.
 
 `seasons.csv` also lists the ten USL Championship seasons in scope (2017 to 2026)
 with an empty `season_id` and a `TODO` note each. The backfill skips those rows and

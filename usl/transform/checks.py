@@ -456,7 +456,7 @@ def played_rows_consistent(con: duckdb.DuckDBPyConnection) -> CheckResult:
 
 
 def all_conference_clubs_have_fixtures(con: duckdb.DuckDBPyConnection) -> CheckResult:
-    """Fail when a club-season in stg_clubs has no fixture at all in stg_matches.
+    """Fail when a club-season in stg_clubs has no fixture in a conference that does.
 
     The mirror image of all_club_seasons_have_conference. The standings grid
     is built from stg_clubs, so a club-season that exists only in
@@ -466,11 +466,19 @@ def all_conference_clubs_have_fixtures(con: duckdb.DuckDBPyConnection) -> CheckR
     club on zero points with a negative goal difference is out-ranked by a
     phantom. No null appears anywhere. This names the pair.
 
+    A (season, conference) with no fixture at all is different: it is reference
+    data written ahead of the data, which is how the subscription month works
+    (the USL rows are in club_conference.csv before a USL match is archived).
+    The grid takes its dates from fixtures, so a fixtureless conference-season
+    has no standings rows and cannot move any line. Those are reported in
+    metadata, not failed.
+
     Args:
         con: Open connection.
 
     Returns:
-        CheckResult with the fixture-less (club_id, season) pairs in metadata.
+        CheckResult with the fixture-less (club_id, season) pairs in metadata,
+        and the conference-seasons that have no fixtures at all.
     """
     rows = con.execute(
         """
@@ -478,12 +486,34 @@ def all_conference_clubs_have_fixtures(con: duckdb.DuckDBPyConnection) -> CheckR
             SELECT DISTINCT season, home_club_id AS club_id FROM stg_matches
             UNION
             SELECT DISTINCT season, away_club_id FROM stg_matches
+        ),
+        live AS (
+            -- conference-seasons in which at least one club has a fixture
+            SELECT DISTINCT c.season, c.conference
+            FROM fixtures f
+            JOIN stg_clubs c ON c.club_id = f.club_id AND c.season = f.season
         )
-        SELECT c.club_id, c.season
+        SELECT c.club_id, c.season, c.conference
         FROM stg_clubs c
+        JOIN live l ON l.season = c.season AND l.conference = c.conference
         LEFT JOIN fixtures f ON f.club_id = c.club_id AND f.season = c.season
         WHERE f.club_id IS NULL
         ORDER BY c.season, c.club_id
+        """
+    ).fetchall()
+    ahead = con.execute(
+        """
+        WITH fixtures AS (
+            SELECT DISTINCT season, home_club_id AS club_id FROM stg_matches
+            UNION
+            SELECT DISTINCT season, away_club_id FROM stg_matches
+        )
+        SELECT c.season, c.conference, count(*) AS n_clubs
+        FROM stg_clubs c
+        LEFT JOIN fixtures f ON f.club_id = c.club_id AND f.season = c.season
+        GROUP BY c.season, c.conference
+        HAVING count(f.club_id) = 0
+        ORDER BY c.season, c.conference
         """
     ).fetchall()
     # An unmapped club string leaves its fixtures with a null club_id, so the
@@ -511,9 +541,95 @@ def all_conference_clubs_have_fixtures(con: duckdb.DuckDBPyConnection) -> CheckR
         not rows,
         {
             "n_without_fixtures": len(rows),
-            "without_fixtures": [{"club_id": r[0], "season": r[1]} for r in rows[:_LIST_LIMIT]],
+            "without_fixtures": [
+                {"club_id": r[0], "season": r[1], "conference": r[2]} for r in rows[:_LIST_LIMIT]
+            ],
             "n_unmapped_fixtures": n_unmapped,
+            "n_conference_seasons_without_fixtures": len(ahead),
+            "conference_seasons_without_fixtures": [
+                {"season": r[0], "conference": r[1], "n_clubs": r[2]} for r in ahead[:_LIST_LIMIT]
+            ],
             **({"hint": hint} if rows else {}),
+        },
+    )
+
+
+def conference_membership_is_plausible(con: duckdb.DuckDBPyConnection) -> CheckResult:
+    """Fail when a club plays more fixtures against other conferences than its own.
+
+    The one error in club_conference.csv the other checks cannot see. A club
+    filed under the wrong conference for a season is present, mapped, has
+    fixtures, and appears once - and is ranked against the wrong field on every
+    date, with the lines of both conferences moved by one club. No null
+    appears anywhere.
+
+    The schedule gives it away. A conference exists because its clubs mostly
+    play each other, so the club-season whose fixtures are mostly against the
+    other conference is the one filed wrongly. Strictly more than half, so a
+    balanced schedule never fires. A season with a single conference passes
+    trivially. Fixtures against an unmapped or unfiled club are not counted;
+    the checks before this one name those.
+
+    Args:
+        con: Open connection.
+
+    Returns:
+        CheckResult with the implausible club-seasons and their fixture split.
+    """
+    rows = con.execute(
+        """
+        WITH sides AS (
+            SELECT season, home_club_id AS club_id, away_club_id AS other
+            FROM stg_matches WHERE NOT is_void
+            UNION ALL
+            SELECT season, away_club_id, home_club_id
+            FROM stg_matches WHERE NOT is_void
+        ),
+        split AS (
+            SELECT s.season, s.club_id, c.conference,
+                   count(*) FILTER (WHERE o.conference = c.conference)  AS same_conference,
+                   count(*) FILTER (WHERE o.conference <> c.conference) AS other_conference
+            FROM sides s
+            JOIN stg_clubs c ON c.club_id = s.club_id AND c.season = s.season
+            JOIN stg_clubs o ON o.club_id = s.other AND o.season = s.season
+            GROUP BY s.season, s.club_id, c.conference
+        )
+        SELECT season, club_id, conference, same_conference, other_conference
+        FROM split
+        WHERE other_conference > same_conference
+        ORDER BY season, conference, club_id
+        """
+    ).fetchall()
+    return CheckResult(
+        "conference_membership_is_plausible",
+        "staging",
+        not rows,
+        {
+            "n_implausible": len(rows),
+            "implausible": [
+                {
+                    "season": r[0],
+                    "club_id": r[1],
+                    "conference": r[2],
+                    "fixtures_in_conference": r[3],
+                    "fixtures_outside": r[4],
+                }
+                for r in rows[:_LIST_LIMIT]
+            ],
+            **(
+                {
+                    "hint": (
+                        "check the club's conference for that season in "
+                        "usl/ref/club_conference.csv against the published table (the "
+                        "archived league-tables response): a club filed under the wrong "
+                        "conference is ranked against the wrong field and nothing goes null. "
+                        "If the schedule genuinely was mostly cross-conference that season, "
+                        "the exception belongs in this check, not in the CSV"
+                    )
+                }
+                if rows
+                else {}
+            ),
         },
     )
 
@@ -809,6 +925,7 @@ STAGING_CHECKS: tuple[Check, ...] = (
     all_club_seasons_have_conference,
     one_conference_per_club_season,
     all_conference_clubs_have_fixtures,
+    conference_membership_is_plausible,
     conference_structure_is_well_formed,
     derby_clubs_are_known,
     played_rows_consistent,

@@ -10,6 +10,7 @@ the pipeline's internals is a scheduler you have to keep in sync with it.
 | File | Purpose |
 |---|---|
 | `check_attendance_coverage.py` | **Run this before you subscribe.** Real working script, serves from the archive when the response is already there |
+| `propose_aliases.py` | **Run this after the first backfill.** Derives the provider-id rows of `club_aliases.csv` from the archive, through the name rows already there |
 | `run_weekly.ps1` | Weekly run, Windows Task Scheduler |
 | `run_weekly.sh` | Weekly run, cron / launchd / systemd timer |
 
@@ -30,6 +31,26 @@ The first command passes today, offline, against the archived example season: 38
 second command is the one that decides the project and it needs the subscription.
 
 See [phase 00](../docs/phases/00-data-access-and-the-clock.md#the-gate-verify-attendance-before-you-pay).
+
+## The alias proposal
+
+```
+python scripts/propose_aliases.py            # dry run: prints the rows it would add
+python scripts/propose_aliases.py --write    # appends them to usl/ref/club_aliases.csv
+```
+
+The staging join is on the provider's numeric club id, and those ids exist only
+in the data. The CSV carries a name row per USL club in advance; this script reads
+every archived `league-matches` response, pairs each id with the name the API gave
+it, and matches the name to a name row loosely - case, punctuation, and a trailing
+FC or SC do not matter, because a person reads the output before it is written and
+the join itself stays exact. Ids it cannot match, or that match two clubs, are
+listed for mapping by hand; an id already in the CSV whose name points at a
+different club is a conflict and is never written. Exit code 1 while anything is
+unmatched, so the loop is: run, resolve the list, run again. Archive only: no key,
+nothing spent.
+
+On the committed example season it reports twenty ids, all already mapped.
 
 ## Exit codes
 
