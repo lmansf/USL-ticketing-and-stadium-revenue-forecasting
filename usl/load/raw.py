@@ -190,23 +190,30 @@ def upsert_matches(con: duckdb.DuckDBPyConnection, df: pd.DataFrame) -> LoadStat
 
 
 def load_season(
-    con: duckdb.DuckDBPyConnection, season_id: int, *, force: bool = False
+    con: duckdb.DuckDBPyConnection,
+    season_id: int,
+    *,
+    force: bool = False,
+    snapshot: str | dt.date | None = None,
 ) -> LoadStats:
     """Fetch, parse, key, and upsert one season.
 
     Served from data/raw_archive/ when the response is there, which after the
-    subscription lapses is always.
+    subscription lapses is always. A live season is pulled with a snapshot
+    date so that each weekly pull is requested and archived on its own - see
+    fetch_season_matches.
 
     Args:
         con: Open connection with write access.
         season_id: FootyStats season id.
         force: Re-request the season even when it is archived.
+        snapshot: The pull date for a live season; None for a completed one.
 
     Returns:
         The insert/update/unchanged split for this season.
     """
     ensure_raw_tables(con)
-    payload = fetch_season_matches(season_id, force=force)
+    payload = fetch_season_matches(season_id, force=force, snapshot=snapshot)
     df = add_match_id(parse_season_matches(payload, season_id))
     log.info("season_id %s: loading %d row(s) into raw_matches", season_id, len(df))
     return upsert_matches(con, df)
@@ -361,11 +368,19 @@ def _conform(df: pd.DataFrame) -> pd.DataFrame:
     if "match_id" not in df.columns:
         raise ValueError("upsert_matches needs a match_id column - run add_match_id first")
 
-    renames = {
-        api: raw
+    both = [
+        (api, raw)
         for api, raw in RAW_COLUMN_MAP.items()
-        if api != raw and api in df.columns and raw not in df.columns
-    }
+        if api != raw and api in df.columns and raw in df.columns
+    ]
+    if both:
+        # Silently preferring one would drop the other's values as nulls; a
+        # frame that mixes the two shapes has to be reconciled by the caller.
+        raise ValueError(
+            "upsert_matches: columns present under both their API and their raw name, "
+            f"which cannot be reconciled here: {both}"
+        )
+    renames = {api: raw for api, raw in RAW_COLUMN_MAP.items() if api != raw and api in df.columns}
     frame = df.rename(columns=renames)
     duplicated = sorted(set(frame.columns[frame.columns.duplicated()]))
     if duplicated:

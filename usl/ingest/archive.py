@@ -10,7 +10,16 @@ Consequences that follow from that, and that the implementation must honour:
   - The archive is committed to git. It is not gitignored, unlike the database.
   - A response is written to disk BEFORE anything that could raise touches it.
     A parse bug must not cost you a request.
-  - Filenames are readable, not hashes, so the archive can be browsed.
+  - Nothing already archived is overwritten by a body that has not been
+    validated. A fresh body lands in a sibling '.partial' file, is checked, and
+    only then replaces the archived copy in one atomic rename; a body that
+    fails the check is kept beside it as '.bad' for inspection and is never
+    served as a hit.
+  - A file that is half-written (a crash mid-write) or empty is not a hit
+    either, so a spent request whose response never fully landed is requested
+    again rather than poisoning every later run.
+  - Filenames are readable, not hashes, so the archive can be browsed. A live
+    season pulled weekly is archived as one dated snapshot per pull.
   - The API key never appears in a filename or inside an archived file.
 
 See docs/phases/00-data-access-and-the-clock.md, exercise 0.1
@@ -20,6 +29,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -34,6 +44,21 @@ _UNSAFE = re.compile(r"[^A-Za-z0-9._-]")
 # Filenames carry the season id as "season_id_<n>"; archive_summary reads it back.
 _SEASON_ID = re.compile(r"season_id_(\d+)")
 
+# A body that has been fetched but not yet validated.
+PARTIAL_SUFFIX = ".partial"
+# A body that failed validation, kept for inspection, never served.
+QUARANTINE_SUFFIX = ".bad"
+# The tag that makes one weekly pull of a live season a distinct archive entry.
+SNAPSHOT_PREFIX = "as_of_"
+
+
+class ArchiveError(RuntimeError):
+    """An archived file cannot be read as the response it claims to be.
+
+    Names the file, because "which one" is the first question when this fires
+    after the subscription has lapsed and nothing can be re-requested.
+    """
+
 
 def _archive_dir() -> Path:
     """config.ARCHIVE_DIR, read at call time so tests can point it elsewhere."""
@@ -45,7 +70,20 @@ def _safe(text: object) -> str:
     return _UNSAFE.sub("_", str(text))
 
 
-def archive_path(endpoint: str, params: dict[str, Any]) -> Path:
+def snapshot_tag(as_of: str | dt.date) -> str:
+    """The archive tag for one dated pull of a live season, e.g. 'as_of_2026-09-08'.
+
+    Args:
+        as_of: The pull date, as a date or an ISO string.
+
+    Returns:
+        The tag to pass as archive_path(..., tag=).
+    """
+    day = as_of.isoformat() if isinstance(as_of, dt.date) else str(as_of)
+    return SNAPSHOT_PREFIX + day
+
+
+def archive_path(endpoint: str, params: dict[str, Any], *, tag: str | None = None) -> Path:
     """Build the archive filename for one request.
 
     Readable, not hashed: 'league-matches_season_id_1625.json' rather than a
@@ -60,6 +98,9 @@ def archive_path(endpoint: str, params: dict[str, Any]) -> Path:
     Args:
         endpoint: API endpoint name, e.g. 'league-matches'.
         params: Request parameters. A 'key' entry (any case) is ignored.
+        tag: An extra label that is part of the archive identity but not of
+            the request - a dated snapshot of a live season. Goes last in the
+            name: 'league-matches_season_id_1625_as_of_2026-09-08.json'.
 
     Returns:
         Path under config.ARCHIVE_DIR.
@@ -70,50 +111,93 @@ def archive_path(endpoint: str, params: dict[str, Any]) -> Path:
             continue
         parts.append(_safe(name))
         parts.append(_safe(params[name]))
+    if tag:
+        parts.append(_safe(tag))
     return _archive_dir() / ("_".join(parts) + ".json")
 
 
-def is_archived(endpoint: str, params: dict[str, Any]) -> bool:
+def _is_usable(path: Path) -> bool:
+    return path.is_file() and path.stat().st_size > 0
+
+
+def is_archived(endpoint: str, params: dict[str, Any], *, tag: str | None = None) -> bool:
     """Whether this exact request has already been archived.
 
+    An empty file is not an archive hit: it is what a crash between creating
+    the file and writing it leaves behind, and serving it would mean a spent
+    request whose response never landed poisons every later run.
+
     Args:
         endpoint: API endpoint name.
         params: Request parameters, key excluded.
+        tag: The snapshot tag, if any.
 
     Returns:
-        True if the response is on disk.
+        True if a non-empty response is on disk.
     """
-    return archive_path(endpoint, params).is_file()
+    return _is_usable(archive_path(endpoint, params, tag=tag))
 
 
-def read_archived(endpoint: str, params: dict[str, Any]) -> dict[str, Any]:
-    """Read a previously archived response.
+def read_file(path: Path) -> dict[str, Any]:
+    """Parse one archived file.
 
     Args:
-        endpoint: API endpoint name.
-        params: Request parameters, key excluded.
+        path: An archive file.
 
     Returns:
         The parsed JSON body.
 
     Raises:
-        FileNotFoundError: If nothing is archived for this request. The message
-            names the path, because "which file did it want" is the first
-            question when this fires after the subscription has lapsed.
+        ArchiveError: The file is not JSON. The message names it and says what
+            to do - the client never writes such a file to the archive, so one
+            that exists was corrupted after the fact.
     """
-    path = archive_path(endpoint, params)
-    if not path.is_file():
-        raise FileNotFoundError(f"nothing archived for {endpoint} {params}: expected {path}")
-    payload: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        payload: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ArchiveError(
+            f"{path} is in the archive but is not JSON ({exc.msg} at char {exc.pos}). "
+            f"Move it aside (for example rename it to {path.name}{QUARANTINE_SUFFIX}) and "
+            "re-request it with a key; nothing in this project writes a non-JSON body to "
+            "the archive, so this file was changed after it was archived."
+        ) from None
     return payload
 
 
-def write_archive(endpoint: str, params: dict[str, Any], body: str) -> Path:
-    """Persist one raw response body, unparsed.
+def read_archived(
+    endpoint: str, params: dict[str, Any], *, tag: str | None = None
+) -> dict[str, Any]:
+    """Read a previously archived response.
 
-    Called with the response text before it is deserialised, so that a malformed
-    payload is still on disk to debug against rather than being lost with the
-    exception.
+    Args:
+        endpoint: API endpoint name.
+        params: Request parameters, key excluded.
+        tag: The snapshot tag, if any.
+
+    Returns:
+        The parsed JSON body.
+
+    Raises:
+        FileNotFoundError: If nothing usable is archived for this request. The
+            message names the path, because "which file did it want" is the
+            first question when this fires after the subscription has lapsed.
+        ArchiveError: The file is present but is not JSON.
+    """
+    path = archive_path(endpoint, params, tag=tag)
+    if not _is_usable(path):
+        raise FileNotFoundError(f"nothing archived for {endpoint} {params}: expected {path}")
+    return read_file(path)
+
+
+def write_partial(
+    endpoint: str, params: dict[str, Any], body: str, *, tag: str | None = None
+) -> Path:
+    """Persist one raw response body beside its archive slot, unvalidated.
+
+    Called with the response text before it is deserialised, so that a
+    malformed payload is still on disk to debug against rather than being lost
+    with the exception. The body goes to '<archive file>.partial', flushed and
+    fsynced, and the archive slot itself is untouched until commit_partial.
 
     The body is written as its UTF-8 bytes, with no pretty-printing, re-encoding
     or newline translation: what is on disk is what the API said.
@@ -122,14 +206,90 @@ def write_archive(endpoint: str, params: dict[str, Any], body: str) -> Path:
         endpoint: API endpoint name.
         params: Request parameters, key excluded.
         body: Raw response text, exactly as received.
+        tag: The snapshot tag, if any.
+
+    Returns:
+        The '.partial' path written.
+    """
+    path = archive_path(endpoint, params, tag=tag)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    partial = path.with_name(path.name + PARTIAL_SUFFIX)
+    with open(partial, "wb") as fh:
+        fh.write(body.encode("utf-8"))
+        fh.flush()
+        os.fsync(fh.fileno())
+    return partial
+
+
+def commit_partial(partial: Path) -> Path:
+    """Make a validated '.partial' body the archived copy, atomically.
+
+    os.replace is atomic on POSIX and on Windows, so a reader sees either the
+    previous archived file or the new one, never a half-written mixture, and a
+    crash before this call leaves the previous copy exactly as it was.
+
+    Args:
+        partial: The path returned by write_partial.
+
+    Returns:
+        The archive path now holding the body.
+    """
+    final = partial.with_name(partial.name.removesuffix(PARTIAL_SUFFIX))
+    os.replace(partial, final)
+    return final
+
+
+def quarantine_partial(partial: Path) -> Path:
+    """Keep a body that failed validation as '<archive file>.bad', never served.
+
+    Args:
+        partial: The path returned by write_partial.
+
+    Returns:
+        The '.bad' path.
+    """
+    bad = partial.with_name(partial.name.removesuffix(PARTIAL_SUFFIX) + QUARANTINE_SUFFIX)
+    os.replace(partial, bad)
+    return bad
+
+
+def write_archive(
+    endpoint: str, params: dict[str, Any], body: str, *, tag: str | None = None
+) -> Path:
+    """Persist one raw response body straight into the archive, atomically.
+
+    write_partial followed by commit_partial, for callers that have already
+    validated the body or are seeding an archive (the tests, the demos).
+
+    Args:
+        endpoint: API endpoint name.
+        params: Request parameters, key excluded.
+        body: Raw response text, exactly as received.
+        tag: The snapshot tag, if any.
 
     Returns:
         The path written.
     """
-    path = archive_path(endpoint, params)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(body.encode("utf-8"))
-    return path
+    return commit_partial(write_partial(endpoint, params, body, tag=tag))
+
+
+def latest_snapshot(endpoint: str, params: dict[str, Any]) -> Path | None:
+    """The newest dated snapshot archived for a request, or None.
+
+    Snapshot tags are ISO dates, so the newest sorts last by name.
+
+    Args:
+        endpoint: API endpoint name.
+        params: Request parameters, key excluded.
+
+    Returns:
+        The path of the newest usable snapshot, or None when there is none.
+    """
+    stem = archive_path(endpoint, params).stem
+    candidates = sorted(
+        path for path in _archive_dir().glob(f"{stem}_{SNAPSHOT_PREFIX}*.json") if _is_usable(path)
+    )
+    return candidates[-1] if candidates else None
 
 
 def archive_summary() -> dict[str, Any]:
@@ -142,11 +302,13 @@ def archive_summary() -> dict[str, Any]:
     Returns:
         A dict with: files (int), bytes (int), endpoints (endpoint -> file
         count), season_ids (sorted ints parsed from filenames), oldest and
-        newest (ISO-8601 UTC mtimes, or None when the archive is empty), and
-        directory (the archive path as a string).
+        newest (ISO-8601 UTC mtimes, or None when the archive is empty),
+        quarantined (count of '.bad' files, which want a look), and directory
+        (the archive path as a string).
     """
     directory = _archive_dir()
     files = sorted(directory.glob("*.json")) if directory.is_dir() else []
+    quarantined = len(list(directory.glob(f"*{QUARANTINE_SUFFIX}"))) if directory.is_dir() else 0
 
     endpoints: dict[str, int] = {}
     season_ids: set[int] = set()
@@ -173,5 +335,6 @@ def archive_summary() -> dict[str, Any]:
         "season_ids": sorted(season_ids),
         "oldest": _iso(min(mtimes)) if mtimes else None,
         "newest": _iso(max(mtimes)) if mtimes else None,
+        "quarantined": quarantined,
         "directory": str(directory),
     }

@@ -133,18 +133,23 @@ def test_response_is_archived_before_parsing(
 ) -> None:
     """A malformed payload must still land on disk.
 
-    The whole point of archive-before-parse: a JSONDecodeError costs you a
-    debugging session, not a request you cannot get back.
+    The whole point of archive-before-parse: a body that fails to parse costs
+    you a debugging session, not a request you cannot get back. It lands as
+    the '.bad' file beside the archive slot - kept byte for byte, but never
+    served as a hit - and the error names it.
     """
     use_key(monkeypatch)
     body = "<html>502 Bad Gateway, but with a 200 status</html>"
     fake = use_get(monkeypatch, FakeResponse(200, body))
 
-    with pytest.raises(json.JSONDecodeError):
+    with pytest.raises(FootyStatsError) as exc:
         fs.get("league-matches", season_id=1625)
 
     path = archive.archive_path("league-matches", {"season_id": 1625})
-    assert path.read_text(encoding="utf-8") == body, "the body must be on disk, unaltered"
+    kept = path.with_name(path.name + archive.QUARANTINE_SUFFIX)
+    assert kept.read_text(encoding="utf-8") == body, "the body must be on disk, unaltered"
+    assert kept.name in str(exc.value)
+    assert not path.exists(), "an unparseable body must not occupy the archive slot"
     assert len(fake.calls) == 1
 
 
@@ -430,6 +435,7 @@ def test_archive_summary_counts_files_and_season_ids(sandbox: list[float]) -> No
         "season_ids": [],
         "oldest": None,
         "newest": None,
+        "quarantined": 0,
         "directory": str(config.ARCHIVE_DIR),
     }
     archive.write_archive("league-matches", {"season_id": 1625}, "{}")
@@ -584,3 +590,293 @@ def test_parses_committed_example_fixture(example_archive_path: Path) -> None:
     assert df["match_id"].str.startswith("fs:").all()
     assert (df["season_id"] == 1625).all()
     assert json.loads(df.loc[0, "raw_json"]) == payload["data"][0]
+
+
+# --------------------------------------------------------------------------
+# The archive slot is never overwritten by an unvalidated body
+# --------------------------------------------------------------------------
+
+
+def _bad_path(endpoint: str, params: dict[str, Any]) -> Path:
+    path = archive.archive_path(endpoint, params)
+    return path.with_name(path.name + archive.QUARANTINE_SUFFIX)
+
+
+def test_force_with_an_error_payload_keeps_the_archived_copy(
+    sandbox: list[float], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forced re-request that comes back as an error envelope must not destroy the season.
+
+    The error body is kept as '.bad' for inspection; the previously archived
+    payload is still served afterwards.
+    """
+    use_key(monkeypatch)
+    archive.write_archive("league-matches", {"season_id": 1625}, json.dumps(PAYLOAD))
+    use_get(monkeypatch, ok({"success": False, "message": "Subscription expired"}))
+
+    with pytest.raises(FootyStatsError) as exc:
+        fs.get("league-matches", force=True, season_id=1625)
+
+    assert "archive was not changed" in str(exc.value)
+    assert archive.read_archived("league-matches", {"season_id": 1625}) == PAYLOAD
+    assert _bad_path("league-matches", {"season_id": 1625}).exists()
+
+
+def test_force_with_a_non_json_body_keeps_the_archived_copy(
+    sandbox: list[float], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A captive-portal page under --force is quarantined; the season is still served."""
+    use_key(monkeypatch)
+    archive.write_archive("league-matches", {"season_id": 1625}, json.dumps(PAYLOAD))
+    use_get(monkeypatch, FakeResponse(200, "<html>Sign in to the hotel wifi</html>"))
+
+    with pytest.raises(FootyStatsError) as exc:
+        fs.get("league-matches", force=True, season_id=1625)
+
+    assert ".bad" in str(exc.value)
+    assert _bad_path("league-matches", {"season_id": 1625}).read_text(encoding="utf-8") == (
+        "<html>Sign in to the hotel wifi</html>"
+    )
+    monkeypatch.setattr(config, "FOOTYSTATS_API_KEY", "")
+    assert fs.get("league-matches", season_id=1625) == PAYLOAD
+
+
+def test_non_json_first_response_is_kept_but_not_served(
+    sandbox: list[float], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A non-JSON body lands on disk to debug against, as '.bad', and is not a hit.
+
+    Archive-before-parse still holds - the bytes are on disk before json.loads
+    runs - but the next run re-requests rather than raising on the same file
+    for ever.
+    """
+    use_key(monkeypatch)
+    fake = use_get(monkeypatch, FakeResponse(200, "<html>502 Bad Gateway</html>"), ok(PAYLOAD))
+
+    with pytest.raises(FootyStatsError) as exc:
+        fs.get("league-matches", season_id=99)
+    assert "not JSON" in str(exc.value)
+    assert not archive.is_archived("league-matches", {"season_id": 99})
+    assert (
+        _bad_path("league-matches", {"season_id": 99}).read_bytes()
+        == b"<html>502 Bad Gateway</html>"
+    )
+
+    assert fs.get("league-matches", season_id=99) == PAYLOAD
+    assert len(fake.calls) == 2
+    assert archive.is_archived("league-matches", {"season_id": 99})
+
+
+def test_crash_before_commit_leaves_no_archive_hit(
+    sandbox: list[float], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The archive slot is filled by one atomic rename; dying before it leaves no half file.
+
+    The first attempt's rename fails (a full disk, a killed process); the body
+    it received is still beside the slot as '.partial', the slot itself is
+    empty, and the next run requests again rather than serving nothing.
+    """
+    use_key(monkeypatch)
+    fake = use_get(monkeypatch, ok(PAYLOAD), ok(PAYLOAD))
+    real_replace = archive.os.replace
+    failures = [OSError(28, "No space left on device")]
+
+    def flaky_replace(src: str, dst: str) -> None:
+        if failures:
+            raise failures.pop()
+        real_replace(src, dst)
+
+    monkeypatch.setattr(archive.os, "replace", flaky_replace)
+    with pytest.raises(OSError):
+        fs.get("league-matches", season_id=5)
+
+    slot = archive.archive_path("league-matches", {"season_id": 5})
+    assert not slot.exists()
+    assert not archive.is_archived("league-matches", {"season_id": 5})
+    assert slot.with_name(slot.name + archive.PARTIAL_SUFFIX).read_text(encoding="utf-8") == (
+        json.dumps(PAYLOAD)
+    )
+
+    assert fs.get("league-matches", season_id=5) == PAYLOAD
+    assert len(fake.calls) == 2
+    assert archive.is_archived("league-matches", {"season_id": 5})
+
+
+def test_zero_byte_archive_file_is_not_a_hit(
+    sandbox: list[float], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An empty file is what a crash mid-create leaves; it is requested again, not served."""
+    path = archive.archive_path("league-matches", {"season_id": 9})
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"")
+    assert not archive.is_archived("league-matches", {"season_id": 9})
+    assert archive.archive_summary()["files"] == 1
+
+    use_key(monkeypatch)
+    fake = use_get(monkeypatch, ok(PAYLOAD))
+    assert fs.get("league-matches", season_id=9) == PAYLOAD
+    assert len(fake.calls) == 1
+    assert archive.is_archived("league-matches", {"season_id": 9})
+
+
+def test_corrupt_archived_file_is_named(sandbox: list[float]) -> None:
+    """A file that is in the archive but is not JSON fails naming the file, not 'char 0'."""
+    path = archive.archive_path("league-tables", {"season_id": 1625})
+    path.parent.mkdir(parents=True)
+    path.write_text("{not json", encoding="utf-8")
+    with pytest.raises(archive.ArchiveError) as exc:
+        archive.read_archived("league-tables", {"season_id": 1625})
+    assert path.name in str(exc.value)
+    with pytest.raises(archive.ArchiveError):
+        fs.get("league-tables", season_id=1625)
+
+
+def test_body_cut_off_mid_transfer_is_retried(
+    sandbox: list[float], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A connection dropped after the headers is ChunkedEncodingError, and it is transient."""
+    use_key(monkeypatch)
+    fake = use_get(
+        monkeypatch, requests.exceptions.ChunkedEncodingError("connection broken"), ok(PAYLOAD)
+    )
+    assert fs.get("league-matches", season_id=1625) == PAYLOAD
+    assert len(fake.calls) == 2
+    assert sandbox == [THROTTLE, 2.0]
+
+
+# --------------------------------------------------------------------------
+# A live season: one dated snapshot per weekly pull
+# --------------------------------------------------------------------------
+
+
+def _payload(n: int) -> dict[str, Any]:
+    return {**PAYLOAD, "data": [{**MATCH, "id": i} for i in range(1, n + 1)]}
+
+
+def test_live_season_is_requested_every_week_and_archived_per_pull(
+    sandbox: list[float], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With a key, a dated pull is never an archive hit on last week's file."""
+    use_key(monkeypatch)
+    archive.write_archive("league-matches", {"season_id": 2026}, json.dumps(_payload(1)))
+
+    fake = use_get(monkeypatch, ok(_payload(2)))
+    assert fs.fetch_season_matches(2026, snapshot="2026-09-08") == _payload(2)
+    assert len(fake.calls) == 1
+    assert archive.is_archived(
+        "league-matches", {"season_id": 2026}, tag=archive.snapshot_tag("2026-09-08")
+    )
+    assert (
+        archive.archive_path(
+            "league-matches", {"season_id": 2026}, tag=archive.snapshot_tag("2026-09-08")
+        ).name
+        == "league-matches_season_id_2026_as_of_2026-09-08.json"
+    )
+    # The undated backfill copy is untouched.
+    assert archive.read_archived("league-matches", {"season_id": 2026}) == _payload(1)
+
+    fake = use_get(monkeypatch, ok(_payload(3)))
+    assert fs.fetch_season_matches(2026, snapshot="2026-09-15") == _payload(3)
+    assert len(fake.calls) == 1
+    # The same pull date again is a hit, so a re-run on Tuesday costs nothing.
+    assert fs.fetch_season_matches(2026, snapshot="2026-09-15") == _payload(3)
+    assert len(fake.calls) == 1
+
+
+def test_live_season_without_a_key_serves_the_newest_snapshot(
+    sandbox: list[float], monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """After the subscription lapses the weekly pull serves the newest snapshot, loudly."""
+    archive.write_archive("league-matches", {"season_id": 2026}, json.dumps(_payload(1)))
+    archive.write_archive(
+        "league-matches",
+        {"season_id": 2026},
+        json.dumps(_payload(2)),
+        tag=archive.snapshot_tag("2026-09-08"),
+    )
+    archive.write_archive(
+        "league-matches",
+        {"season_id": 2026},
+        json.dumps(_payload(3)),
+        tag=archive.snapshot_tag("2026-09-15"),
+    )
+    caplog.set_level(logging.WARNING, logger="usl.ingest.footystats")
+
+    assert fs.fetch_season_matches(2026, snapshot="2026-09-22") == _payload(3)
+    assert "as_of_2026-09-15" in caplog.text and "nothing is being refreshed" in caplog.text
+
+
+def test_live_season_without_a_key_falls_back_to_the_undated_copy(
+    sandbox: list[float], monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """No snapshot yet: the backfill copy is served; nothing at all: the named refusal."""
+    caplog.set_level(logging.WARNING, logger="usl.ingest.footystats")
+    with pytest.raises(NoSubscriptionError):
+        fs.fetch_season_matches(2026, snapshot="2026-09-22")
+
+    archive.write_archive("league-matches", {"season_id": 2026}, json.dumps(_payload(1)))
+    assert fs.fetch_season_matches(2026, snapshot="2026-09-22") == _payload(1)
+    assert "undated archive copy" in caplog.text
+
+
+# --------------------------------------------------------------------------
+# The natural-key fallback refuses nulls and spells the date one way
+# --------------------------------------------------------------------------
+
+
+def test_natural_key_refuses_nulls() -> None:
+    """Two rows with a missing club would otherwise hash to one id and silently merge."""
+    frame = pd.DataFrame(
+        {
+            "season": [2024, 2024],
+            "date": ["2024-03-02", "2024-03-02"],
+            "home_raw": [None, None],
+            "away_raw": ["Club B", "Club C"],
+        }
+    )
+    with pytest.raises(ValueError, match="home_raw"):
+        add_match_id(frame)
+
+
+def test_natural_key_hashes_the_same_day_the_same_way() -> None:
+    """A string, a date, and a pandas Timestamp for the same day give the same id."""
+    import datetime as dt
+
+    base = {"season": [2024], "home_raw": ["Club A"], "away_raw": ["Club B"]}
+    ids = {
+        add_match_id(pd.DataFrame({**base, "date": [value]}))["match_id"].iloc[0]
+        for value in ("2024-03-02", dt.date(2024, 3, 2), pd.Timestamp("2024-03-02"))
+    }
+    assert len(ids) == 1
+
+
+# --------------------------------------------------------------------------
+# The coverage script archives what it spends
+# --------------------------------------------------------------------------
+
+
+def test_coverage_script_archives_its_live_response(
+    sandbox: list[float],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The day-one USL check goes through the client, so the backfill does not pay twice."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "check_attendance_coverage",
+        config.PROJECT_ROOT / "scripts" / "check_attendance_coverage.py",
+    )
+    assert spec is not None and spec.loader is not None
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+
+    fake = use_get(monkeypatch, ok(_payload(5)))
+    monkeypatch.setattr("sys.argv", ["check", "--season-id", "4242", "--key", FAKE_KEY])
+    assert script.main() == 0
+    assert len(fake.calls) == 1
+    assert archive.read_archived("league-matches", {"season_id": 4242}) == _payload(5)
+    assert config.FOOTYSTATS_API_KEY == ""
+    out = capsys.readouterr().out
+    assert FAKE_KEY not in out
+    assert "5/5 populated" in out

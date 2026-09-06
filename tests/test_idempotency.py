@@ -257,3 +257,20 @@ def test_raw_summary_on_an_empty_database(con: duckdb.DuckDBPyConnection) -> Non
         "max_match_date": None,
         "null_attendance_pct": 0.0,
     }
+
+
+def test_frame_with_both_api_and_raw_names_is_refused(
+    con: duckdb.DuckDBPyConnection, tiny_raw: pd.DataFrame
+) -> None:
+    """A frame carrying homeID and home_raw cannot be reconciled silently.
+
+    Preferring one would load the other's rows with null club ids and report
+    them as clean inserts. The documented behaviour is to refuse, naming the
+    pairs.
+    """
+    from usl.load.raw import upsert_matches
+
+    mixed = tiny_raw.assign(homeID=[149] * len(tiny_raw))
+    with pytest.raises(ValueError) as exc:
+        upsert_matches(con, mixed)
+    assert "homeID" in str(exc.value) and "home_raw" in str(exc.value)

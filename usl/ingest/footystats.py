@@ -21,6 +21,7 @@ See docs/phases/01-ingest-to-raw.md
 
 from __future__ import annotations
 
+import datetime as dt
 import hashlib
 import json
 import logging
@@ -89,23 +90,36 @@ class SchemaDriftError(RuntimeError):
     """
 
 
-def get(endpoint: str, *, force: bool = False, **params: Any) -> dict[str, Any]:
+def get(
+    endpoint: str,
+    *,
+    force: bool = False,
+    snapshot: str | dt.date | None = None,
+    **params: Any,
+) -> dict[str, Any]:
     """Fetch one endpoint, serving from the archive when possible.
 
     The archive check comes first and does two jobs. During the subscription it
     stops you spending a request twice. After the subscription it is the only
     path, and the pipeline keeps running against a dead key.
 
-    Order of operations on a miss: throttle, fetch, write the body to the
-    archive, and only then parse it - a JSONDecodeError still leaves the
-    response on disk. A body that parses but says success=false is removed
-    from the archive again, because an error payload served as a hit forever
-    would be worse than no file at all.
+    Order of operations on a miss: throttle, fetch, write the body to a
+    '.partial' file beside its archive slot, and only then parse it. A body
+    that is not JSON, or that parses but says success=false, is moved to a
+    '.bad' file - kept for inspection, never served as a hit - and whatever was
+    archived before is untouched. Only a body that passes both checks replaces
+    the archived copy, in one atomic rename. So --force can never destroy the
+    only archived copy of a season with a lapsed-key error envelope or a
+    captive-portal page, and a crash mid-write leaves no half file to serve.
 
     Args:
         endpoint: Endpoint name, e.g. 'league-matches'.
         force: Re-request even when the response is archived. Spends a
             request; only useful for correcting an archived response.
+        snapshot: A pull date. Makes this pull its own archive entry
+            ('..._as_of_2026-09-08.json') rather than a hit on an undated one,
+            which is how a live season is refreshed weekly without --force and
+            without overwriting anything. The date is not sent to the API.
         **params: Query parameters. Do NOT pass the key - this function adds
             it. A 'key' parameter passed anyway is dropped, not used.
 
@@ -114,17 +128,20 @@ def get(endpoint: str, *, force: bool = False, **params: Any) -> dict[str, Any]:
 
     Raises:
         NoSubscriptionError: Not archived, and no key available to fetch it.
-        FootyStatsError: The request failed, or the API reported failure.
-        json.JSONDecodeError: The body is not JSON. It is on disk by then.
+        FootyStatsError: The request failed, the body was not JSON, or the API
+            reported failure. In the last two cases the body is kept as '.bad'
+            and the message names it.
+        ArchiveError: An archived file is present but is not JSON.
     """
     clean = {name: value for name, value in params.items() if name.lower() != "key"}
     if len(clean) != len(params):
         log.warning("%s: a 'key' parameter was passed to get() and ignored", endpoint)
-    path = archive.archive_path(endpoint, clean)
+    tag = archive.snapshot_tag(snapshot) if snapshot is not None else None
+    path = archive.archive_path(endpoint, clean, tag=tag)
 
-    if not force and archive.is_archived(endpoint, clean):
+    if not force and archive.is_archived(endpoint, clean, tag=tag):
         log.info("archive hit %s", path.name)
-        return archive.read_archived(endpoint, clean)
+        return archive.read_archived(endpoint, clean, tag=tag)
 
     key = config.FOOTYSTATS_API_KEY
     if not config.has_subscription():
@@ -138,22 +155,32 @@ def get(endpoint: str, *, force: bool = False, **params: Any) -> dict[str, Any]:
     log.info("archive miss %s - requesting %s %s", path.name, endpoint, clean)
     _throttle()
     body = _get_with_retry(endpoint, {**clean, "key": key})
-    path = archive.write_archive(endpoint, clean, body)
-    log.info("%s %s: archived %s (%d bytes)", endpoint, clean, path.name, len(body.encode("utf-8")))
+    partial = archive.write_partial(endpoint, clean, body, tag=tag)
 
     try:
         payload: Any = json.loads(body)
-    except json.JSONDecodeError:
-        log.error("%s %s: response is not JSON; the body is kept at %s", endpoint, clean, path)
-        raise
+    except json.JSONDecodeError as exc:
+        bad = archive.quarantine_partial(partial)
+        log.error(
+            "%s %s: response is not JSON; kept at %s, archive unchanged", endpoint, clean, bad
+        )
+        raise FootyStatsError(
+            f"{endpoint} {clean}: the response is not JSON ({exc.msg} at char {exc.pos}). "
+            f"The body is kept at {bad.name} for inspection; the archive was not changed."
+        ) from None
 
     if isinstance(payload, dict) and "success" in payload and not payload["success"]:
-        path.unlink(missing_ok=True)
+        bad = archive.quarantine_partial(partial)
         message = str(payload.get("message", "")).replace(key, "***")
         raise FootyStatsError(
             f"{endpoint} {clean}: the API reported failure: {message!r}. "
-            "The response was not kept in the archive."
+            f"The body is kept at {bad.name} for inspection; the archive was not changed."
         )
+
+    final = archive.commit_partial(partial)
+    log.info(
+        "%s %s: archived %s (%d bytes)", endpoint, clean, final.name, len(body.encode("utf-8"))
+    )
     return payload
 
 
@@ -181,7 +208,8 @@ def _describe_http_failure(endpoint: str, status: int) -> str:
 def _get_with_retry(endpoint: str, params: dict[str, Any]) -> str:
     """GET an endpoint, retrying transient failures only.
 
-    Transient means connection errors, timeouts, and 5xx. A 401 means the key
+    Transient means connection errors (including a body cut off mid-transfer),
+    timeouts, and 5xx. A 401 means the key
     is wrong or the subscription lapsed; a 404 means the endpoint or season id
     is wrong. Neither improves with waiting, and retrying them burns backoff
     time to deliver the same answer.
@@ -208,7 +236,15 @@ def _get_with_retry(endpoint: str, params: dict[str, Any]) -> str:
     for attempt in range(1, attempts + 1):
         try:
             response = requests.get(url, params=params, timeout=config.REQUEST_TIMEOUT_SECONDS)
-        except (requests.ConnectionError, requests.Timeout) as exc:
+        except (
+            requests.ConnectionError,
+            requests.Timeout,
+            requests.exceptions.ChunkedEncodingError,
+            requests.exceptions.ContentDecodingError,
+        ) as exc:
+            # A connection that drops after the headers surfaces as
+            # ChunkedEncodingError, not ConnectionError - for a multi-hundred-
+            # kilobyte season body it is the likeliest transient failure.
             reason = type(exc).__name__
         except requests.RequestException as exc:
             raise FootyStatsError(
@@ -300,7 +336,9 @@ def list_leagues(*, force: bool = False) -> pd.DataFrame:
     return frame
 
 
-def fetch_season_matches(season_id: int, *, force: bool = False) -> dict[str, Any]:
+def fetch_season_matches(
+    season_id: int, *, force: bool = False, snapshot: str | dt.date | None = None
+) -> dict[str, Any]:
     """Fetch one season of matches.
 
     The backbone request. One call per season, plus one per extra page when the
@@ -308,14 +346,49 @@ def fetch_season_matches(season_id: int, *, force: bool = False) -> dict[str, An
     payload carries the concatenated 'data'. The example season fits in one
     page (380 matches against a page size of 600).
 
+    A live season is pulled with a snapshot date, which gives each weekly pull
+    its own archive entry: with a key the request is made and archived as
+    '..._as_of_<date>.json'; without a key the newest archived snapshot is
+    served (or the undated backfill copy if there is none) with a warning, so
+    the weekly run keeps working after the subscription lapses and says
+    plainly that it is not refreshing.
+
     Args:
         season_id: FootyStats season id, from usl/ref/seasons.csv.
         force: Re-request even when archived.
+        snapshot: The pull date for a live season. None for a completed one.
 
     Returns:
         The raw JSON body, with 'data' spanning every page.
     """
-    payload = get(ENDPOINT_LEAGUE_MATCHES, force=force, season_id=season_id)
+    params = {"season_id": season_id}
+    if (
+        snapshot is not None
+        and not force
+        and not config.has_subscription()
+        and not archive.is_archived(
+            ENDPOINT_LEAGUE_MATCHES, params, tag=archive.snapshot_tag(snapshot)
+        )
+    ):
+        newest = archive.latest_snapshot(ENDPOINT_LEAGUE_MATCHES, params)
+        if newest is not None:
+            log.warning(
+                "season_id %s: no FOOTYSTATS_API_KEY, so the %s pull is served from the newest "
+                "archived snapshot %s - nothing is being refreshed",
+                season_id,
+                snapshot,
+                newest.name,
+            )
+            return archive.read_file(newest)
+        if archive.is_archived(ENDPOINT_LEAGUE_MATCHES, params):
+            log.warning(
+                "season_id %s: no FOOTYSTATS_API_KEY and no dated snapshot, so the %s pull is "
+                "served from the undated archive copy - nothing is being refreshed",
+                season_id,
+                snapshot,
+            )
+            snapshot = None
+    payload = get(ENDPOINT_LEAGUE_MATCHES, force=force, snapshot=snapshot, season_id=season_id)
     pager = payload.get("pager") if isinstance(payload, dict) else None
     if not isinstance(pager, dict):
         return payload
@@ -329,7 +402,9 @@ def fetch_season_matches(season_id: int, *, force: bool = False) -> dict[str, An
     log.info("season_id %s: %d pages, fetching the rest", season_id, max_page)
     data = list(payload.get("data") or [])
     for page in range(2, max_page + 1):
-        extra = get(ENDPOINT_LEAGUE_MATCHES, force=force, season_id=season_id, page=page)
+        extra = get(
+            ENDPOINT_LEAGUE_MATCHES, force=force, snapshot=snapshot, season_id=season_id, page=page
+        )
         data.extend(extra.get("data") or [])
 
     reported = pager.get("total_results")
@@ -468,6 +543,33 @@ def _provider_id_text(value: object) -> str:
     return str(value)
 
 
+def _is_null(value: object) -> bool:
+    """None, pandas' NA and NaT, or a NaN float. Anything else is a value."""
+    if value is None or value is pd.NA or value is pd.NaT:
+        return True
+    return isinstance(value, float) and value != value
+
+
+def _natural_key_id(season: object, date: object, home: object, away: object) -> str:
+    """The nk: id for one row, refusing nulls and pinning the date's spelling.
+
+    A null anywhere in the key would hash every such row to one id and the
+    upsert would silently keep only the last of them - the same reason the
+    provider-id branch refuses a null id. The date is rendered as an ISO day
+    whatever the caller held it as (a string, a date, a pandas Timestamp), so
+    the same fixture from two sources upserts against itself.
+    """
+    parts = {"season": season, "date": date, "home_raw": home, "away_raw": away}
+    nulls = [name for name, value in parts.items() if _is_null(value)]
+    if nulls:
+        raise ValueError(
+            f"add_match_id: the natural key has a null in {nulls}; such rows would collide "
+            "on one match_id. Fill the value in or drop the row before loading."
+        )
+    day = pd.Timestamp(str(date)).date().isoformat()
+    return "nk:" + hashlib.sha1(f"{season}|{day}|{home}|{away}".encode()).hexdigest()[:16]
+
+
 def add_match_id(df: pd.DataFrame) -> pd.DataFrame:
     """Add a namespaced match_id, from the provider's own id where it exists.
 
@@ -505,8 +607,7 @@ def add_match_id(df: pd.DataFrame) -> pd.DataFrame:
     if all(column in out.columns for column in NATURAL_KEY_COLUMNS):
         keys = zip(*(out[column] for column in NATURAL_KEY_COLUMNS), strict=True)
         out["match_id"] = [
-            "nk:" + hashlib.sha1(f"{season}|{date}|{home}|{away}".encode()).hexdigest()[:16]
-            for season, date, home, away in keys
+            _natural_key_id(season, date, home, away) for season, date, home, away in keys
         ]
         log.info("match_id from the natural key (nk:) for %d row(s) - no provider id", len(out))
         return out

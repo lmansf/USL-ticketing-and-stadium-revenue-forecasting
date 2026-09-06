@@ -640,3 +640,21 @@ def test_utcnow_is_naive_utc() -> None:
     assert now.tzinfo is None
     aware = dt.datetime.now(dt.UTC).replace(tzinfo=None)
     assert abs((aware - now).total_seconds()) < 5
+
+
+def test_the_public_example_key_is_not_scrubbed_from_prose() -> None:
+    """With FOOTYSTATS_API_KEY=example, the word 'example' must survive in log lines.
+
+    It is the free public key, not a secret, and the pipeline's own messages
+    use the word. The key= query parameter is still scrubbed.
+    """
+    import logging as _logging
+
+    from usl import config
+
+    scrub = RedactSecretsFilter(secret=config.EXAMPLE_KEY)
+    record = _logging.LogRecord(
+        "x", _logging.INFO, "", 0, "keep the example row; url ?key=example&season_id=1", (), None
+    )
+    scrub.filter(record)
+    assert record.getMessage() == "keep the example row; url ?key=***&season_id=1"

@@ -52,6 +52,28 @@ CANDIDATES = ("attendance", "crowd", "spectators", "attendance_count")
 USABLE_THRESHOLD = 0.80
 
 
+def fetch_live(endpoint: str, key: str, *, force: bool, **params: object) -> dict:
+    """GET one endpoint through the project's client when it is importable.
+
+    The client archives the response under data/raw_archive/ before parsing it,
+    throttles, and retries transient failures - so the request this script
+    spends on day one of the subscription is not spent again by the backfill.
+    Falls back to a bare urllib request, unarchived, only when the package
+    cannot be imported (a checkout with nothing installed).
+    """
+    try:
+        from usl import config
+        from usl.ingest import footystats
+    except ImportError:
+        return fetch(endpoint, key, **params)
+    previous = config.FOOTYSTATS_API_KEY
+    config.FOOTYSTATS_API_KEY = key
+    try:
+        return footystats.get(endpoint, force=force, **params)
+    finally:
+        config.FOOTYSTATS_API_KEY = previous
+
+
 def fetch(endpoint: str, key: str, **params: object) -> dict:
     """GET one endpoint and return the parsed body."""
     query = urllib.parse.urlencode({"key": key, **params})
@@ -140,7 +162,9 @@ def main() -> int:
 
     if payload is None:
         try:
-            payload = fetch("league-matches", args.key, season_id=args.season_id)
+            payload = fetch_live(
+                "league-matches", args.key, force=args.live, season_id=args.season_id
+            )
         except Exception as exc:  # noqa: BLE001 - this is a diagnostic script
             print(f"REQUEST FAILED: {exc}")
             print()

@@ -1,0 +1,1 @@
+{"success": true, "pager": {"current_page": 1, "max_page": 1, "results_per_page": 600, "total_results": 1}, "data": [{"id": 1, "season": "2018/2019", "status": "complete", "date_unix": 1533927600, "homeID": 149, "awayID": 108, "homeGoalCount": 2, "awayGoalCount": 1, "attendance": 74439}]}

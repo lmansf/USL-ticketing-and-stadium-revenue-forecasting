@@ -137,7 +137,9 @@ class RedactSecretsFilter(logging.Filter):
     The key is in every request URL, so one DEBUG line logging a URL would
     write a paid credential into logs/. Belt and braces: the client never logs
     URLs, and this filter makes sure nothing else does either. It replaces the
-    configured key wherever it appears, and any 'key=...' query parameter.
+    configured key wherever it appears, and any 'key=...' query parameter. The
+    one exception is the literal public key 'example', which is not a secret
+    and would otherwise be scrubbed out of every sentence that uses the word.
     """
 
     _QUERY_KEY = re.compile(r"(?i)(\bkey=)[^&\s\"']+")
@@ -149,7 +151,9 @@ class RedactSecretsFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         text = record.getMessage()
         cleaned = self._QUERY_KEY.sub(r"\1***", text)
-        if self.secret:
+        # The public example key is the word "example"; scrubbing it would
+        # rewrite ordinary prose into what looks like a masked leak.
+        if self.secret and self.secret != config.EXAMPLE_KEY:
             cleaned = cleaned.replace(self.secret, "***")
         if cleaned != text:
             record.msg = cleaned

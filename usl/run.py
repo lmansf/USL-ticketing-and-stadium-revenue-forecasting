@@ -199,7 +199,10 @@ def _stage_ingest(
                 config.CURRENT_SEASON,
                 season_id,
             )
-        stats = load_season(con, season_id, force=args.force)
+        # Each weekly pull is its own dated archive entry, so the season is
+        # actually re-requested while the key is live and the newest snapshot
+        # is served (with a warning) once it is not. No --force needed.
+        stats = load_season(con, season_id, force=args.force, snapshot=ctx.started_at.date())
         _load_split(meta, stats)
         _freshness(con, meta)
 
@@ -301,11 +304,13 @@ def cmd_ingest(args: argparse.Namespace, ctx: RunContext) -> int:
     The weekly delta. Everything already loaded is updated in place rather than
     appended - see load.raw.upsert_matches.
 
-    This is the one stage that genuinely needs a live subscription: a new week
-    of matches is by definition not in the archive. With config.CURRENT_SEASON
-    unset the data is archive-only and the stage records a success with zero
-    rows and says so, rather than looking like a refresh. With a current season
-    and no key it serves the archive and warns that the API is out of reach.
+    This is the one stage that genuinely needs a live subscription. The pull is
+    archived as a dated snapshot of the season, one per weekly run, so with a
+    key it always requests fresh data and never spends a request twice on the
+    same day. With config.CURRENT_SEASON unset the data is archive-only and the
+    stage records a success with zero rows and says so, rather than looking
+    like a refresh. With a current season and no key it serves the newest
+    archived snapshot and warns that nothing is being refreshed.
 
     Args:
         args: Parsed arguments.
