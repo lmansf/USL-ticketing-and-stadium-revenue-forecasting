@@ -18,6 +18,7 @@ help:
 	@echo "  make backfill       Load every season into raw_matches (from the archive)"
 	@echo "  make ingest         Ingest the current season only (needs a live key)"
 	@echo "  make archive        Report what data/raw_archive/ holds"
+	@echo "  make league-list    List leagues and season ids (needs a key, or an archived response)"
 	@echo "  make transform      Run the SQL layer: staging, intermediate, mart"
 	@echo "  make train          Train both models, write metrics and importance"
 	@echo "  make export         Write Tableau extracts to tableau/extracts/"
@@ -32,6 +33,11 @@ help:
 	@echo ""
 	@echo "Demo"
 	@echo "  make demo-list      List the break-and-fix scenarios"
+	@echo "  make demo-d1        D1: the locked DuckDB file"
+	@echo "  make demo-d2        D2: the failed API request"
+	@echo "  make demo-d3        D3: the club rename that drops rows silently"
+	@echo "  make demo-d4        D4: the null injected into a feature column"
+	@echo "  make demo-working   Idempotency, schema drift, duplicate rejection - shown working"
 	@echo ""
 	@echo "Housekeeping"
 	@echo "  make clean          Remove caches and build artifacts"
@@ -60,7 +66,11 @@ ingest:
 
 .PHONY: archive
 archive:
-	$(PYTHON) -m usl.run archive --db $(DB)
+	$(PYTHON) -m usl.run archive
+
+.PHONY: league-list
+league-list:
+	$(PYTHON) -m usl.run league-list
 
 .PHONY: transform
 transform:
@@ -84,11 +94,11 @@ test:
 
 .PHONY: lint
 lint:
-	$(PYTHON) -m ruff check usl tests
+	$(PYTHON) -m ruff check usl tests demo scripts
 
 .PHONY: format
 format:
-	$(PYTHON) -m ruff format usl tests
+	$(PYTHON) -m ruff format usl tests demo scripts
 
 .PHONY: typecheck
 typecheck:
@@ -97,16 +107,45 @@ typecheck:
 .PHONY: check
 check: lint typecheck test
 
+# Every demo runs from the committed archive with no key, writes only to a
+# scratch copy of the database, and restores whatever it touched in a finally.
+# See demo/README.md and docs/phases/09-break-and-fix.md.
 .PHONY: demo-list
 demo-list:
-	@echo "D1  Locked DuckDB file producing a stale run   demo/d1_locked_file.py"
-	@echo "D2  Failed API request as a failed step        demo/d2_dead_url.py"
-	@echo "D3  Club rename silently dropping rows         demo/d3_club_rename.py"
-	@echo "D4  Null injected into a feature column        demo/d4_null_injection.py"
+	@echo "Break and fix"
+	@echo "  make demo-d1   D1  Locked DuckDB file: retry, then a message naming the holder   demo/d1_locked_file.py"
+	@echo "  make demo-d2   D2  Failed API request: endpoint and status, never the URL        demo/d2_dead_url.py"
+	@echo "  make demo-d3   D3  Club rename: the check names the string, the count shows the loss  demo/d3_club_rename.py"
+	@echo "  make demo-d4   D4  Null in a feature column: the check fails the run before training  demo/d4_null_injection.py"
 	@echo ""
-	@echo "Working-behaviour demos (not failures):"
-	@echo "    Idempotency, schema drift, duplicate rejection"
+	@echo "Demonstrate working, do not break (make demo-working runs all three)"
+	@echo "  Idempotency          demo/show_idempotency.py"
+	@echo "  Schema drift         demo/show_schema_drift.py"
+	@echo "  Duplicate rejection  demo/show_duplicate_rejection.py"
+	@echo ""
 	@echo "See docs/phases/09-break-and-fix.md"
+
+.PHONY: demo-d1
+demo-d1:
+	$(PYTHON) demo/d1_locked_file.py
+
+.PHONY: demo-d2
+demo-d2:
+	$(PYTHON) demo/d2_dead_url.py
+
+.PHONY: demo-d3
+demo-d3:
+	$(PYTHON) demo/d3_club_rename.py
+
+.PHONY: demo-d4
+demo-d4:
+	$(PYTHON) demo/d4_null_injection.py
+
+.PHONY: demo-working
+demo-working:
+	$(PYTHON) demo/show_idempotency.py
+	$(PYTHON) demo/show_schema_drift.py
+	$(PYTHON) demo/show_duplicate_rejection.py
 
 .PHONY: clean
 clean:

@@ -231,6 +231,9 @@ def _stage_train(con: duckdb.DuckDBPyConnection, ctx: RunContext, args: argparse
                 "'python -m usl.run transform' before training."
             )
         summary = train_all(con, args.run_date, seeds=args.seeds)
+        # Freshness and quality fields go on every row of run_log, this one
+        # included; rows_read and seasons then describe what training saw.
+        _freshness(con, meta)
         meta["rows_read"] = summary["n_played"]
         meta["seasons"] = [
             int(row[0])
