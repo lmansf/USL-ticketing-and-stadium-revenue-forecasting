@@ -225,7 +225,95 @@ instructions are in [docs/mvp/05-mvp-schedule.md](docs/mvp/05-mvp-schedule.md).
 
 ## Results on the example season
 
-<!-- RESULTS_TABLE -->
+<!-- RESULTS_START -->
+Produced by `make backfill && make transform && make train && make export` on the archived EPL 2018/19 season (run date 2026-09-06). Numbers are EPL numbers; the point is that the machinery works end to end, not the values.
+
+| Table | Rows |
+|---|---|
+| `raw_matches` | 380 |
+| `stg_matches` | 380 |
+| `int_standings` | 2,180 |
+| `int_stakes` | 2,180 |
+| `mart_match_features` | 380 |
+| `mart_decay_curve` | 6 |
+
+Every check passed on the latest run:
+
+| Check | Tier | Passed |
+|---|---|---|
+| `no_future_leakage` | intermediate | yes |
+| `features_not_null` | mart | yes |
+| `mart_matches_staging` | mart | yes |
+| `all_club_seasons_have_conference` | staging | yes |
+| `all_clubs_mapped` | staging | yes |
+| `matches_are_fresh` | staging | yes |
+| `one_match_per_club_per_date` | staging | yes |
+| `one_row_per_match` | staging | yes |
+| `row_count_preserved` | staging | yes |
+
+Holdout error (chronological split, last 20 percent of played matches):
+
+| Model | MAE (attendees) | MAPE | RMSE | Train | Test |
+|---|---|---|---|---|---|
+| `naive_club_mean` | 998 | 2.6% | 1,850 | 304 | 76 |
+| `baseline` | 1,207 | 3.0% | 2,650 | 304 | 76 |
+| `prorel` | 1,204 | 3.0% | 2,797 | 304 | 76 |
+
+Run-to-run noise across seeds (`model_variance`), the floor the A-to-B gap has to clear:
+
+| Model | Min MAE | Max MAE | Seeds |
+|---|---|---|---|
+| `baseline` | 1,207 | 1,520 | 4 |
+| `prorel` | 1,183 | 1,273 | 4 |
+
+Top five features by gain, `baseline`: `home_gate_ma5` 133,044,640, `last_home_gate` 128,441,720, `home_gate_ma3` 54,254,172, `opponent_club_id` 10,726,125, `is_weekend` 6,919,114
+
+Top five features by gain, `prorel`: `last_home_gate` 227,080,192, `home_gate_ma5` 148,431,824, `home_gate_ma3` 64,715,832, `opponent_club_id` 9,894,376, `rank_before` (pro-rel) 8,844,703
+
+Features the pro-rel model never split on (logged as zero, not absent): `is_final_home_match`, `is_season_opener`, `matches_since_elimination`, `same_fixture_last_season`
+
+The dead-rubber decay curve (`mart_decay_curve`), attendance on eliminated-club home matches indexed to each club-season's own pre-elimination mean. Elimination here means out of the top-four race, the EPL's upside-stakes line:
+
+| Home matches since elimination | n | Index vs own baseline | Club-seasons |
+|---|---|---|---|
+| 0 | 15 | 1.02 | 15 |
+| 1 | 14 | 1.02 | 14 |
+| 2 | 13 | 1.02 | 13 |
+| 3 | 9 | 1.03 | 9 |
+| 4 | 5 | 1.02 | 5 |
+| 5 | 2 | 1.04 | 2 |
+
+### Reading the result honestly
+
+This is exercise 7.2 answered on the data actually in hand, and the answer is the
+one the guide predicts for a single season.
+
+- **The naive baseline wins.** The club's mean home gate beats both XGBoost models
+  by about 200 attendees of MAE. With one season, the lag features are the club
+  mean with noise added, and 304 training rows are not enough for a tree model to
+  recover the calendar and opponent effects on top of that. This is the expected
+  outcome, and it is why the first graduation step is backfilling more seasons.
+- **The A-to-B gap is noise.** Model B beats Model A by three attendees. The same
+  model re-trained under four seeds moves by three hundred. There is no finding on
+  the headline question yet, and saying so is the point of logging the variance.
+- **The stakes features barely register.** `rank_before` is the only pro-rel feature
+  in the top five by gain, and `matches_since_elimination` was never split on. Four
+  features were never used at all; `same_fixture_last_season` because there is no
+  previous season, the two season-boundary flags because with one season each fires
+  on exactly twenty rows.
+- **No dead-rubber decay in this league, on this line.** Clubs out of the top-four
+  race draw 102 percent of their own pre-elimination gate, flat across the tail. In
+  the EPL a club out of the Champions League race is usually still fighting for
+  Europe or against relegation, and gates are season-ticket dominated, so the
+  "nothing at stake" condition the curve is meant to measure barely exists here.
+  The machinery is the deliverable; the curve on USL data is the finding.
+
+What the run does prove: the pipeline lands the data, reconstructs standings that
+match the published table exactly, builds every feature without leakage (the
+`no_future_leakage` check recomputes the standings independently on every run),
+trains both models on identical rows, and records enough per-run history that the
+comparison can be read against noise instead of against a single point estimate.
+<!-- RESULTS_END -->
 
 ---
 

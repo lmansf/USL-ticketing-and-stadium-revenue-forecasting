@@ -201,6 +201,13 @@ logged.
   such: `predicted` plus or minus the run's MAE, joined from `model_metrics`. The
   export writes `predictions_with_band.csv` with that join done.
 
+**What the example season showed.** The naive club mean beat both XGBoost models on
+the holdout (MAE 998 against 1,207 and 1,204), the gap between the two models was
+three attendees against a seed spread of hundreds, and the decay curve was flat at
+about 1.02. All three are the expected result of one season of data and are written
+up as such in the README. The pipeline's job on this season was to be correct, not
+to be right.
+
 ## Phase 08 - Tableau
 
 Tableau is not installed in the environment this was built in. The export path is
