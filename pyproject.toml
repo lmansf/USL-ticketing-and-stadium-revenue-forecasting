@@ -30,10 +30,11 @@ dev = [
     "mypy>=1.10",
     "pandas-stubs>=2.2",
     "types-requests>=2.31",
+    "dagster>=1.7",
 ]
 # Tableau Hyper extracts. CSV export works without this.
 tableau = ["pantab>=5.0"]
-# Phase two. See docs/phases/11-phase-two-dagster.md
+# Phase two, built. `dagster dev -m usl.defs`. See docs/phases/11-phase-two-dagster.md
 dagster = ["dagster>=1.7", "dagster-webserver>=1.7"]
 
 [project.scripts]

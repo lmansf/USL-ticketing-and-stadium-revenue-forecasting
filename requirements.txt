@@ -25,6 +25,7 @@ pydantic>=2.6
 # Tableau extract path (optional - CSV export works without it)
 # pantab>=5.0
 
-# Phase two only. Uncomment when you start docs/phases/11-phase-two-dagster.md
-# dagster>=1.7
-# dagster-webserver>=1.7
+# Phase two (docs/phases/11-phase-two-dagster.md). dagster is what the asset
+# graph and its tests need; the webserver is only for `make dagster`.
+dagster>=1.7
+dagster-webserver>=1.7

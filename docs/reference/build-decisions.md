@@ -185,11 +185,13 @@ extend `stadiums.csv` with a per-club zone and join it in `stg_matches`.
 
 ## Phase 05 - the SQL layer
 
-Six models, in order: `stg_clubs`, `stg_matches`, `int_standings`, `int_stakes`,
-`mart_match_features`, `mart_decay_curve`. The guide's four plus two:
-`int_stakes` keeps the playoff-line arithmetic out of the mart so it can be read
-on its own, and `mart_decay_curve` is the dead-rubber curve as a table so it can
-be exported and plotted.
+Seven models, in order: `stg_clubs`, `stg_matches`, `stg_weather`, `int_standings`,
+`int_stakes`, `mart_match_features`, `mart_decay_curve`. The guide's four plus
+three: `int_stakes` keeps the playoff-line arithmetic out of the mart so it can be
+read on its own, `mart_decay_curve` is the dead-rubber curve as a table so it can
+be exported and plotted, and `stg_weather` (phase two) is the typed view of
+`raw_weather`, present and empty until the weather backfill is archived so the
+mart's join is always well-formed.
 
 Tunables reach the static SQL through a one-row `ref_config` table (COVID window,
 match timezone, relegation assumption, playoff fallback) built by
@@ -217,9 +219,14 @@ fires). And one on the fixture list against the CSV:
 `conference_membership_is_plausible` fails a club-season that plays more fixtures
 against other conferences than its own, because a club filed under the wrong
 conference is present, mapped, playing, listed once, and ranked against the wrong
-field on every date. Fifteen in all, collected within a tier, stopped between
-tiers, every result logged. Hints name the file and the row to change, and a
-check whose failure would send you to the wrong file says so.
+field on every date. Two more with phase two: `home_matches_resolve_to_one_stadium`
+(a gap or an overlap in `stadiums.csv` validity ranges, or a club with no row,
+each of which drops or duplicates weather silently) and `played_weather_is_observed`
+(a played match older than the archive lag still carrying forecast weather, which
+is training data quietly containing predictions). Seventeen in all, collected
+within a tier, stopped between tiers, every result logged. Hints name the file and
+the row to change, and a check whose failure would send you to the wrong file
+says so.
 
 A conference-season with no fixture at all is reference data written ahead of the
 data, not a phantom: the standings grid takes its dates from fixtures, so it has
@@ -313,6 +320,66 @@ carries the view-by-view spec against the exported CSVs.
 All seven scripts run from the archive with no key and restore state in `finally`.
 D4 snapshots the database file before injecting the null and copies it back after.
 D3 edits `club_aliases.csv` in place and restores it byte for byte.
+
+## Phase 11 - Dagster
+
+- **Thin wrappers, one file per concern.** `usl/assets/` holds one asset per raw
+  table, reference CSV and SQL model, a multi-asset for the five model tables, and
+  one for the extracts. Each body is the phase-one call plus a metadata dict; no
+  logic lives there, and a test checks that each SQL asset's declared upstream is
+  exactly the tables its file reads.
+- **Checks block by tier.** Every check function becomes a blocking asset check
+  through one factory, anchored on `stg_matches`, `int_standings` or
+  `mart_match_features` by tier. A check may name upstream assets as extra
+  dependencies, never a downstream one (a cycle), which is why the mart checks
+  read nothing beyond the mart.
+- **Serial, in one process.** `Definitions(executor=in_process_executor)`. DuckDB
+  is single-writer and the pipeline takes seconds; concurrency would reopen the
+  phase-02 problem for no gain. Each asset opens its own connection through the
+  same lock guard as the CLI.
+- **The run log is written under the Dagster run id**, one row per asset as a
+  stage, and every asset check writes its `check_log` row. The Tableau tracker
+  strip reads the same tables whichever scheduler is in charge.
+- **Schedule** `weekly_tuesday`, `config.SCHEDULE_CRON` in `config.SCHEDULE_TZ`.
+  One scheduler at a time: turning the Dagster schedule on is the moment the
+  scheduled task is deleted.
+- **Not built:** partitions, IO managers, sensors. Whole-table rebuilds into one
+  DuckDB file need none of them.
+
+## Phase 12 - weather
+
+- **Archive-first, the FootyStats way.** Open-Meteo responses go through
+  `usl.ingest.archive`: `.partial`, validate (JSON, no error envelope, a daily time
+  series), atomic rename, `.bad` on failure. Observed weather is fetched once per
+  club, ground and date range; a forecast is a dated snapshot per day it is made.
+- **What needs weather is decided from staging**, so the staging tier is rebuilt
+  at the start of the weather stage. Needs join `stadiums.csv` on the club and the
+  validity range covering the match date (exercise 12.1). One archive request per
+  club and ground spans the earliest to the latest played home date still without
+  an observation, clipped to `config.WEATHER_ARCHIVE_LAG_DAYS` before today; one
+  forecast request per club and ground covers the unplayed fixtures inside
+  `config.WEATHER_FORECAST_DAYS`, and only the fixture dates are written.
+- **Observation over forecast, always.** A forecast never overwrites an
+  observation; an observation replaces a forecast, counted as an upgrade; and a
+  played match older than the lag that still carries a forecast fails the
+  `played_weather_is_observed` check. `weather_source` and `weather_horizon_days`
+  ride into the mart as non-feature columns.
+- **Coordinates at city level**, one row per club, split only where a club
+  actually moved city or ground across a metro (Tottenham, Louisville City,
+  Bethlehem to Chester, Tukwila to Tacoma). Daily weather does not vary across a
+  metro, and a finer file is more rows to get wrong for no signal.
+- **A feature null on every played row is dropped before training.** It carries
+  nothing and only perturbs column subsampling. This is what keeps the example
+  season's numbers stable when weather is disabled, and it also catches
+  `same_fixture_last_season` on a single-season dataset, so the numbers moved
+  once when the rule landed; the README carries the new ones.
+- **Off by default.** `USL_WEATHER_ENABLED` gates the stage. The archive-only run
+  and CI have no network and no archived weather, so the stage records a skip and
+  the weather columns are null. Once the backfill is archived on a connected
+  machine, an enabled run with nothing missing makes no request.
+- **No neutral-site list.** Every match is treated as played at the home club's
+  ground for that date; the caveat is stated in phase 12. The list goes beside
+  `derbies.csv` if it is ever needed.
 
 ## Not decided here
 

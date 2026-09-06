@@ -64,7 +64,10 @@ def write_reference_csvs(
             [("club_a", "club_b", "test")], columns=["club_id_a", "club_id_b", "note"]
         ),
         "stadiums": pd.DataFrame(
-            [("club_a", "Ground A", 27.9, -82.4, "2017-01-01", "2099-12-31", "test")],
+            [
+                (club_id, f"Ground {club_id}", 27.9, -82.4, "2017-01-01", "2099-12-31", "test")
+                for club_id in sorted(club_rows["club_id"].astype(str).unique())
+            ],
             columns=["club_id", "stadium", "lat", "lon", "valid_from", "valid_to", "note"],
         ),
     }
@@ -172,7 +175,7 @@ def test_load_reference_tables_returns_counts_and_builds_ref_config(
         "club_conference": 4,
         "conference_structure": 1,
         "derbies": 1,
-        "stadiums": 1,
+        "stadiums": 4,
     }
     types = {r[0]: r[1] for r in con.execute("DESCRIBE conference_structure").fetchall()}
     assert set(types.values()) == {"VARCHAR"}
@@ -226,6 +229,7 @@ def test_rerunning_the_layer_produces_identical_tables(
     assert first_counts == {
         "stg_clubs": 4,
         "stg_matches": 6,
+        "stg_weather": 0,
         "int_standings": 16,
         "int_stakes": 16,
         "mart_match_features": 6,
@@ -312,10 +316,10 @@ def test_all_check_results_are_logged_not_only_failures(
         "SELECT check_name, tier, passed FROM check_log WHERE run_id = ? ORDER BY checked_at",
         [ctx.run_id],
     ).fetchall()
-    assert len(logged) == len(ALL_CHECKS) == 15
+    assert len(logged) == len(ALL_CHECKS) == 17
     assert [name for name, _, _ in logged] == [c.__name__ for c in ALL_CHECKS]
     assert all(passed for _, _, passed in logged)
-    assert [tier for _, tier, _ in logged] == ["staging"] * 12 + ["intermediate"] + ["mart"] * 2
+    assert [tier for _, tier, _ in logged] == ["staging"] * 13 + ["intermediate"] + ["mart"] * 3
 
 
 def test_failed_checks_are_logged_and_later_tiers_are_not_run(

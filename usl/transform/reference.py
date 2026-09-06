@@ -36,6 +36,9 @@ def normalize_club_key(raw: object) -> str:
     distinct clubs, and a collision is the silent failure phase 03 exists to
     prevent. See docs/phases/03-club-name-consistency.md, exercise 3.2.
 
+    A whole-number float is an id that came through pandas (93.0 is 93); a
+    fractional one is a coordinate and keeps its digits.
+
     Args:
         raw: A provider id (int, float, or str) or a display name.
 
@@ -44,6 +47,9 @@ def normalize_club_key(raw: object) -> str:
     """
     if isinstance(raw, bool):
         return str(raw)
+    if isinstance(raw, float) and not raw.is_integer():
+        # a coordinate in stadiums.csv, not an id: keep every digit
+        return repr(raw)
     if isinstance(raw, int | float):
         return str(int(raw))
     return " ".join(str(raw).split())

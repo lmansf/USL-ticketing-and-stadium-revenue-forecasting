@@ -251,12 +251,12 @@ def test_ingest_current_season_without_an_id_fails(
 # --------------------------------------------------------------------------
 
 
-def test_weekly_shares_one_run_id_across_all_four_stages(db: Path, tmp_path: Path) -> None:
-    """One invocation, one run_id, four success rows, and the extracts on disk."""
+def test_weekly_shares_one_run_id_across_all_five_stages(db: Path, tmp_path: Path) -> None:
+    """One invocation, one run_id, five success rows, and the extracts on disk."""
     out = tmp_path / "extracts"
     assert main(["weekly", "--db", str(db), "--out-dir", str(out)]) == EXIT_OK
     run = _latest_run(db)
-    assert set(run) == {"ingest", "transform", "train", "export"}
+    assert set(run) == {"ingest", "weather", "transform", "train", "export"}
     assert {r["status"] for r in run.values()} == {"success"}
     assert len({r["run_id"] for r in run.values()}) == 1
     assert run["train"]["rows_read"] == 380
@@ -277,7 +277,7 @@ def test_weekly_stops_at_the_first_failed_stage(
 
     assert main(["weekly", "--db", str(db), "--out-dir", str(tmp_path / "x")]) == EXIT_FAILED
     run = _latest_run(db)
-    assert set(run) == {"ingest", "transform"}
+    assert set(run) == {"ingest", "weather", "transform"}
     assert run["ingest"]["status"] == "success"
     assert run["transform"]["status"] == "failed"
     assert run["transform"]["error_type"] == "CheckFailure"

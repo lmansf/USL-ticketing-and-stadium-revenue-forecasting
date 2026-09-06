@@ -13,7 +13,7 @@ contents than the `note` column.
 | `club_conference.csv` | `club_id` and season to conference, plus the display name for that club-season | [phase 04](../../docs/phases/04-standings-as-of-match-date.md) |
 | `conference_structure.csv` | Season and conference to playoff spots and relegation spots | [phase 06](../../docs/phases/06-features.md), [open questions](../../docs/reference/open-questions.md#the-playoff-line) |
 | `derbies.csv` | Club pairs flagged as derbies, with the rule used | [phase 06](../../docs/phases/06-features.md) |
-| `stadiums.csv` | `club_id` to coordinates, with validity ranges | [phase 12, deferred](../../docs/phases/12-phase-two-weather.md) |
+| `stadiums.csv` | `club_id` to coordinates, with validity ranges where a club moved | [phase 12](../../docs/phases/12-phase-two-weather.md) |
 
 All six are loaded by `usl/transform/reference.py` with every column as text and
 every value whitespace-normalised, so `93` and `"93"` are the same join key. Typing
@@ -64,7 +64,12 @@ with an empty `season_id` and a `TODO` note each. The backfill skips those rows 
 reports them, so the file doubles as the "what have I not pulled yet" list during
 the subscription month.
 
-`stadiums.csv` still holds the phase-two example rows.
+`stadiums.csv` has a row for every club in `club_conference.csv`, EPL and USL, at
+city-level coordinates - daily weather does not differ across a metro, so a move
+within one is not split - with validity ranges where the move was real (Tottenham,
+Louisville City, Bethlehem Steel to Philadelphia Union II, Seattle Sounders 2 to
+Tacoma). `home_matches_resolve_to_one_stadium` names a gap, an overlap, or a club
+with no row; `tests/test_weather.py` checks the committed file.
 
 ## Rules
 

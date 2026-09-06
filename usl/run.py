@@ -57,6 +57,7 @@ from usl.logging_setup import (
 from usl.models.train import train_all
 from usl.transform.checks import CheckFailure
 from usl.transform.runner import run_sql_layer
+from usl.weather.refresh import refresh as weather_refresh
 
 # Named explicitly: under "python -m usl.run" __name__ is "__main__", which is
 # not a name anyone would search the log file for.
@@ -205,6 +206,22 @@ def _stage_ingest(
         stats = load_season(con, season_id, force=args.force, snapshot=ctx.started_at.date())
         _load_split(meta, stats)
         _freshness(con, meta)
+
+
+def _stage_weather(
+    con: duckdb.DuckDBPyConnection, ctx: RunContext, args: argparse.Namespace
+) -> None:
+    with stage(con, ctx, "weather") as meta:
+        if not table_exists(con, "raw_matches"):
+            raise ConfigurationError(
+                f"{args.db} has no raw_matches table - nothing has been loaded. Run "
+                "'python -m usl.run backfill' first."
+            )
+        stats = weather_refresh(con, today=ctx.started_at.date(), force=args.force)
+        meta.update(stats.as_metadata())
+        _freshness(con, meta)
+        if stats.skipped:
+            meta["status_note"] = "skipped: USL_WEATHER_ENABLED is not set"
 
 
 def _stage_transform(
@@ -366,6 +383,27 @@ def cmd_archive(args: argparse.Namespace, ctx: RunContext) -> int:
     return EXIT_OK
 
 
+def cmd_weather(args: argparse.Namespace, ctx: RunContext) -> int:
+    """Fetch match-day weather: observations for played matches, forecasts for the next.
+
+    Phase two. Serves from data/raw_archive/ where the response is there and
+    goes to Open-Meteo otherwise; with USL_WEATHER_ENABLED unset it records a
+    skipped stage and touches nothing. The first run on a connected machine is
+    the backfill; every later run is the weekly top-up.
+
+    Args:
+        args: Parsed arguments.
+        ctx: The run context.
+
+    Returns:
+        Process exit code.
+    """
+    with _open(args) as con:
+        ensure_log_tables(con)
+        _stage_weather(con, ctx, args)
+    return EXIT_OK
+
+
 def cmd_transform(args: argparse.Namespace, ctx: RunContext) -> int:
     """Run the SQL layer: staging, intermediate, mart, with checks between tiers.
 
@@ -416,9 +454,9 @@ def cmd_export(args: argparse.Namespace, ctx: RunContext) -> int:
 
 
 def cmd_weekly(args: argparse.Namespace, ctx: RunContext) -> int:
-    """The Tuesday run: ingest, transform, train, export, in order.
+    """The Tuesday run: ingest, weather, transform, train, export, in order.
 
-    One run_id and one connection across all four stages, so "show me every
+    One run_id and one connection across all five stages, so "show me every
     stage of the run that failed last Tuesday" is one query rather than a
     reconstruction from timestamps.
 
@@ -438,6 +476,7 @@ def cmd_weekly(args: argparse.Namespace, ctx: RunContext) -> int:
     with _open(args) as con:
         ensure_log_tables(con)
         _stage_ingest(con, ctx, args)
+        _stage_weather(con, ctx, args)
         _stage_transform(con, ctx, args)
         _stage_train(con, ctx, args)
         _stage_export(con, ctx, args)
@@ -477,6 +516,7 @@ COMMANDS: dict[str, Command] = {
     "backfill": cmd_backfill,
     "ingest": cmd_ingest,
     "archive": cmd_archive,
+    "weather": cmd_weather,
     "transform": cmd_transform,
     "train": cmd_train,
     "export": cmd_export,

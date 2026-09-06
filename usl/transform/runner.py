@@ -32,6 +32,7 @@ from usl.transform.checks import (
     CheckFailure,
     CheckResult,
 )
+from usl.weather.schema import ensure_weather_table
 
 log = logging.getLogger(__name__)
 
@@ -41,6 +42,7 @@ log = logging.getLogger(__name__)
 MODELS: tuple[str, ...] = (
     "stg_clubs",
     "stg_matches",
+    "stg_weather",
     "int_standings",
     "int_stakes",
     "mart_match_features",
@@ -50,6 +52,7 @@ MODELS: tuple[str, ...] = (
 TIERS: dict[str, str] = {
     "stg_clubs": "staging",
     "stg_matches": "staging",
+    "stg_weather": "staging",
     "int_standings": "intermediate",
     "int_stakes": "intermediate",
     "mart_match_features": "mart",
@@ -111,6 +114,11 @@ def materialise(con: duckdb.DuckDBPyConnection, model: str) -> int:
     """
     if model not in MODELS or not _PLAIN_NAME.fullmatch(model):
         raise ValueError(f"not a declared model: {model!r} (MODELS = {MODELS})")
+    if model == "stg_weather":
+        # The one raw table that may never have been written: weather is phase
+        # two and off by default. Create it empty so the model always builds
+        # and the mart's LEFT JOIN is always well-formed.
+        ensure_weather_table(con)
     sql = (config.SQL_DIR / f"{model}.sql").read_text(encoding="utf-8")
     con.execute(f"CREATE OR REPLACE TABLE {model} AS\n{sql.strip().rstrip(';')}")
     n = row_count(con, model)

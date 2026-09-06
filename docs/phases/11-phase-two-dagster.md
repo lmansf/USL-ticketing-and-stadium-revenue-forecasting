@@ -1,9 +1,12 @@
 # Phase two - Dagster orchestration
 
-> **Status: deferred.** Phase one ships with a plain weekly scheduled task
-> (see [docs/mvp/05-mvp-schedule.md](../mvp/05-mvp-schedule.md)). This document
-> is future work, kept in full because the phase-one code is written to make the
-> migration cheap. Nothing here is required for the phase-one deliverable.
+> **Status: built.** The asset graph lives in `usl/defs.py` and `usl/assets/`,
+> wraps the phase-one functions unchanged, and runs in-process with the same
+> checks between tiers. `make dagster` opens the UI with the weekly schedule
+> defined; `tests/test_dagster.py` materialises the whole graph on the example
+> season. The phase-one scheduled task still works and is still the default -
+> see [How it landed](#how-it-landed) at the end for what changed and what did
+> not. The guide text below is kept as written.
 
 ---
 
@@ -145,3 +148,60 @@ materialising in parallel against one DuckDB file is the same lock contention wi
 ways to hit it. Whatever you decided in phase one has to hold under concurrency before
 you turn parallelism on, or you constrain the graph to serial execution and say why.
 Worth thinking about before you migrate, not after.
+
+---
+
+## How it landed
+
+```
+usl/
+  defs.py                 # Definitions: assets, checks, the weekly job and schedule
+  assets/
+    resources.py          # DuckDBResource (the phase-02 lock guard) and the run-log bridge
+    raw.py                # raw_matches, the five reference CSVs, ref_config
+    weather.py            # raw_weather (phase 12)
+    sql.py                # one asset per SQL model, one asset check per check function
+    models.py             # trained_models: a multi-asset with the five output tables
+    export.py             # tableau_extracts
+```
+
+```
+make install-dagster     # pip install -e ".[dagster]"
+make dagster             # dagster dev -m usl.defs, UI on http://localhost:3000
+```
+
+**Migration was decoration, as promised.** Every asset body is one call into
+`usl.load`, `usl.transform`, `usl.models`, `usl.export` or `usl.weather` - the
+same call `python -m usl.run` makes - plus a metadata dict. The check functions
+became asset checks through one factory: `AssetCheckResult(passed=result.passed,
+metadata=result.metadata)`. The test that the SQL files read exactly the tables
+each asset declares as upstream keeps the lineage graph honest.
+
+**The run log is still written.** Each asset records itself as a stage of the
+Dagster run under the Dagster run id, and each asset check writes its row to
+`check_log`, so the Tableau tracker strip reads the same tables whichever
+scheduler is in charge. Dagster's own history sits on top rather than replacing
+that.
+
+**Checks block by tier.** Staging checks hang off `stg_matches`, intermediate off
+`int_standings`, mart off `mart_match_features`, all `blocking=True`. A failing
+staging check stops every asset downstream of `stg_matches` in the same run,
+which is the phase-one rule - collect within a tier, stop between tiers - with
+Dagster doing the stopping. A check may name upstream assets as extra
+dependencies but never a downstream one; that is a cycle, and the reason the
+mart checks read nothing beyond the mart.
+
+**The DuckDB question, answered.** Serial. `Definitions(executor=in_process_executor)`:
+one asset at a time, in dependency order, in one process, each opening and
+closing its own connection through the phase-02 lock guard. The pipeline finishes
+in seconds, so parallelism would buy nothing and cost the single-writer problem
+again with more ways to hit it.
+
+**The schedule** is `weekly_tuesday`, `config.SCHEDULE_CRON` (`0 6 * * 2`) in
+`config.SCHEDULE_TZ`. Turning it on in the UI is the moment to delete the
+scheduled task; running both is two writers on one file.
+
+**What is deliberately not there.** No partitions (the data is one table per
+model, rebuilt whole), no IO managers (DuckDB is the store), no sensors. The
+guide's layout put staging and marts in separate files; they are one file here
+because they are one factory.

@@ -38,7 +38,7 @@ import pandas as pd
 import xgboost as xgb
 
 from usl import config
-from usl.features.definitions import MODEL_FEATURES, is_prorel
+from usl.features.definitions import MODEL_FEATURES, all_features, is_prorel
 from usl.models.metrics import ErrorMetrics, compute_metrics, naive_club_mean
 
 log = logging.getLogger(__name__)
@@ -114,6 +114,15 @@ NAIVE_MODEL_NAME = "naive_club_mean"
 # category set is fixed to every club in the mart before any split, so the
 # integer codes cannot drift between train, holdout and forecast rows.
 CATEGORICAL_FEATURES: tuple[str, ...] = ("opponent_club_id",)
+
+# The five tables train_all writes, in the order ensure_output_tables creates them.
+OUTPUT_TABLES: tuple[str, ...] = (
+    "predictions",
+    "model_metrics",
+    "feature_importance",
+    "model_variance",
+    "model_cv",
+)
 
 # Columns written to each output table, in table order, with the SQL type each
 # is cast to on the way in. Frames are registered and inserted with SELECT so
@@ -524,6 +533,23 @@ def train_all(
     if played.empty:
         raise ValueError("mart_match_features has no played rows with attendance; nothing to train")
 
+    # A feature column that is null on every played row carries nothing and
+    # only perturbs column subsampling, so the seed spread would change with
+    # no information added. The weather family is like that until the
+    # Open-Meteo backfill is archived. Drop such columns here, per model, and
+    # say so; the column list of the mart is unchanged.
+    all_null = sorted(
+        feature
+        for feature in all_features()
+        if feature in played.columns and played[feature].isna().all()
+    )
+    if all_null:
+        log.info("features null on every played row, dropped before training: %s", all_null)
+    model_features: dict[str, tuple[str, ...]] = {
+        name: tuple(f for f in features if f not in all_null)
+        for name, features in MODEL_FEATURES.items()
+    }
+
     train, test = chronological_split(played, config.TEST_FRACTION)
     if train.empty or test.empty:
         raise ValueError(
@@ -557,6 +583,7 @@ def train_all(
         "n_test": int(len(test)),
         "n_future": int(len(future)),
         "n_no_gate": no_gate,
+        "all_null_features": all_null,
         "split_date": split_date,
         "seeds": seed_list,
         "feature_count": {},
@@ -568,7 +595,7 @@ def train_all(
     }
 
     # 3. the two models on the holdout
-    for name, features in MODEL_FEATURES.items():
+    for name, features in model_features.items():
         summary["feature_count"][name] = len(features)
         log.info("model %s: %d features", name, len(features))
         model, predicted = train_one(train, test, features, seed=primary_seed, categories=levels)
@@ -627,7 +654,7 @@ def train_all(
     )
     summary["mae"][NAIVE_MODEL_NAME] = naive_metrics.mae
     summary["metrics"][NAIVE_MODEL_NAME] = naive_metrics
-    for name in MODEL_FEATURES:
+    for name in model_features:
         log.info(
             "model %s against %s: MAE gap %+.1f (negative is better than the club mean)",
             name,
@@ -639,7 +666,7 @@ def train_all(
     if future.empty:
         log.info("no unplayed fixtures in the mart; no forecasts written")
     else:
-        for name, features in MODEL_FEATURES.items():
+        for name, features in model_features.items():
             _, forecast = train_one(played, future, features, seed=primary_seed, categories=levels)
             prediction_rows.extend(_prediction_rows(future, name, run_date, forecast, None))
         log.info(
@@ -650,14 +677,14 @@ def train_all(
 
     # 6. run-to-run variance: the other seeds on the same split
     for seed in seed_list[1:]:
-        for name, features in MODEL_FEATURES.items():
+        for name, features in model_features.items():
             _, predicted = train_one(train, test, features, seed=seed, categories=levels)
             mae = compute_metrics(y_test, predicted, n_train=len(train)).mae
             variance_rows.append(
                 {"model_name": name, "run_date": run_date, "seed": seed, "mae": mae}
             )
             summary["variance"][name][seed] = mae
-    for name in MODEL_FEATURES:
+    for name in model_features:
         maes = list(summary["variance"][name].values())
         spread = max(maes) - min(maes)
         log.info(
@@ -681,7 +708,7 @@ def train_all(
     for fold_season, fold_train, fold_test in folds:
         y_fold = pd.to_numeric(fold_test[config.TARGET], errors="raise").astype("float64")
         fold_predictions: dict[str, pd.Series] = {}
-        for name, features in MODEL_FEATURES.items():
+        for name, features in model_features.items():
             _, fold_predictions[name] = train_one(
                 fold_train, fold_test, features, seed=primary_seed, categories=levels
             )

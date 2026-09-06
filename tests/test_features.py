@@ -44,7 +44,13 @@ MATCH_COLUMNS = [
 ]
 CLUB_COLUMNS = ["club_id", "season", "conference", "display_name"]
 STRUCTURE_COLUMNS = ["season", "conference", "playoff_spots", "relegation_spots", "note"]
-DOWNSTREAM_MODELS = ("int_standings", "int_stakes", "mart_match_features", "mart_decay_curve")
+DOWNSTREAM_MODELS = (
+    "stg_weather",
+    "int_standings",
+    "int_stakes",
+    "mart_match_features",
+    "mart_decay_curve",
+)
 
 
 # ---------------------------------------------------------------------------

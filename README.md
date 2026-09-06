@@ -16,9 +16,13 @@ difference in error is attributable to those features and nothing else.
 
 The build guide under `docs/` has been worked through from phase 00 to phase 09.
 Every stub under `usl/` is implemented, every test is real, `make check` is green on
-a fresh clone, and the whole pipeline - archive, load, six SQL models, fifteen checks,
+a fresh clone, and the whole pipeline - archive, load, seven SQL models, seventeen checks,
 both models plus the naive baseline, extracts, the weekly command, seven demo
-scripts - runs end to end from the committed archive with no API key.
+scripts - runs end to end from the committed archive with no API key. Phase two
+is built as well: the same pipeline as a Dagster asset graph with the checks as
+blocking asset checks, and match-day weather from Open-Meteo as a shared feature
+family, off by default until its backfill has been archived on a connected
+machine (see [phase two](#phase-two-built)).
 
 It runs today on the one season the free FootyStats `example` key serves: **English
 Premier League 2018/19**, 380 matches, attendance on every one. That is exactly the
@@ -103,7 +107,7 @@ line falls between measured, proxied, and instrumented-but-unvalidated.
 
 Everything runs on one machine against a single DuckDB file. Phase one is scheduled
 by a plain weekly task on Tuesdays. Dagster and weather features are
-[phase two](#phase-two-deferred).
+[phase two](#phase-two-built).
 
 With `FOOTYSTATS_API_KEY` unset, the whole pipeline runs from `data/raw_archive/`.
 That is the intended state after the subscription month ends, and it is how anyone
@@ -185,7 +189,7 @@ Then run the pipeline from the archive:
 
 ```
 make backfill      # 380 EPL matches from data/raw_archive/, no key needed
-make transform     # six SQL models, fifteen checks
+make transform     # seven SQL models, seventeen checks
 make train         # both models, the naive baseline, seed variance, CV
 make export        # CSVs into tableau/extracts/
 ```
@@ -232,6 +236,7 @@ Produced by `make backfill && make transform && make train && make export` on th
 |---|---|
 | `raw_matches` | 380 |
 | `stg_matches` | 380 |
+| `stg_weather` | 0 |
 | `int_standings` | 2,180 |
 | `int_stakes` | 2,180 |
 | `mart_match_features` | 380 |
@@ -244,12 +249,14 @@ Every check passed on the latest run:
 | `no_future_leakage` | intermediate | yes |
 | `features_not_null` | mart | yes |
 | `mart_matches_staging` | mart | yes |
+| `played_weather_is_observed` | mart | yes |
 | `all_club_seasons_have_conference` | staging | yes |
 | `all_clubs_mapped` | staging | yes |
 | `all_conference_clubs_have_fixtures` | staging | yes |
 | `conference_membership_is_plausible` | staging | yes |
 | `conference_structure_is_well_formed` | staging | yes |
 | `derby_clubs_are_known` | staging | yes |
+| `home_matches_resolve_to_one_stadium` | staging | yes |
 | `matches_are_fresh` | staging | yes |
 | `one_conference_per_club_season` | staging | yes |
 | `one_match_per_club_per_date` | staging | yes |
@@ -262,21 +269,21 @@ Holdout error (chronological split, last 20 percent of played matches):
 | Model | MAE (attendees) | MAPE | RMSE | Train | Test |
 |---|---|---|---|---|---|
 | `naive_club_mean` | 998 | 2.6% | 1,850 | 304 | 76 |
-| `baseline` | 1,207 | 3.0% | 2,650 | 304 | 76 |
-| `prorel` | 1,204 | 3.0% | 2,797 | 304 | 76 |
+| `baseline` | 1,360 | 3.3% | 2,690 | 304 | 76 |
+| `prorel` | 1,421 | 3.4% | 3,227 | 304 | 76 |
 
 Run-to-run noise across seeds (`model_variance`), the floor the A-to-B gap has to clear:
 
 | Model | Min MAE | Max MAE | Seeds |
 |---|---|---|---|
-| `baseline` | 1,207 | 1,520 | 4 |
-| `prorel` | 1,183 | 1,273 | 4 |
+| `baseline` | 1,360 | 1,467 | 4 |
+| `prorel` | 1,116 | 1,421 | 4 |
 
-Top five features by gain, `baseline`: `home_gate_ma5` 133,044,640, `last_home_gate` 128,441,720, `home_gate_ma3` 54,254,172, `opponent_club_id` 10,726,125, `is_weekend` 6,919,114
+Top five features by gain, `baseline`: `home_gate_ma5` 160,567,328, `last_home_gate` 118,736,288, `home_gate_ma3` 43,325,168, `opponent_club_id` 9,121,513, `day_of_week` 4,015,585
 
-Top five features by gain, `prorel`: `last_home_gate` 227,080,192, `home_gate_ma5` 148,431,824, `home_gate_ma3` 64,715,832, `opponent_club_id` 9,894,376, `rank_before` (pro-rel) 8,844,703
+Top five features by gain, `prorel`: `last_home_gate` 213,088,672, `home_gate_ma5` 165,036,528, `home_gate_ma3` 60,139,072, `opponent_club_id` 8,967,534, `rank_before` (pro-rel) 8,472,666
 
-Features the pro-rel model never split on (logged as zero, not absent): `is_final_home_match`, `is_season_opener`, `matches_since_elimination`, `same_fixture_last_season`
+Features the pro-rel model never split on (logged as zero, not absent): `is_final_home_match`, `is_season_opener`
 
 The dead-rubber decay curve (`mart_decay_curve`), attendance on eliminated-club home matches indexed to each club-season's own pre-elimination mean. Elimination here means out of the top-four race, the EPL's upside-stakes line:
 
@@ -295,24 +302,32 @@ This is exercise 7.2 answered on the data actually in hand, and the answer is th
 one the guide predicts for a single season.
 
 - **The naive baseline wins.** The club's mean home gate beats both XGBoost models
-  by about 200 attendees of MAE. With one season, the lag features are the club
+  by 360 to 420 attendees of MAE. With one season, the lag features are the club
   mean with noise added, and 304 training rows are not enough for a tree model to
   recover the calendar and opponent effects on top of that. This is the expected
   outcome, and it is why the first graduation step is backfilling more seasons.
-- **The A-to-B gap is noise.** Model B beats Model A by three attendees. The same
-  model re-trained under four seeds moves by three hundred. There is no finding on
-  the headline question yet, and saying so is the point of logging the variance.
+- **The A-to-B gap is noise.** Model A beats Model B by 61 attendees on the primary
+  seed. Re-trained under four seeds, Model B ranges over 305 attendees and its best
+  seed beats every seed of Model A. There is no finding on the headline question
+  yet, and saying so is the point of logging the variance.
 - **The stakes features barely register.** `rank_before` is the only pro-rel feature
-  in the top five by gain, and `matches_since_elimination` was never split on. Four
-  features were never used at all; `same_fixture_last_season` because there is no
-  previous season, the two season-boundary flags because with one season each fires
-  on exactly twenty rows.
+  in the top five by gain, in fifth place. Two features were never split on, the
+  season-boundary flags, because with one season each fires on exactly twenty rows.
+  Six more never reached the model at all: `same_fixture_last_season`, because there
+  is no previous season, and the five weather columns, because the weather backfill
+  has not been archived yet. A feature that is null on every training row is dropped
+  before training rather than passed in as a constant.
 - **No dead-rubber decay in this league, on this line.** Clubs out of the top-four
   race draw 102 percent of their own pre-elimination gate, flat across the tail. In
   the EPL a club out of the Champions League race is usually still fighting for
   Europe or against relegation, and gates are season-ticket dominated, so the
   "nothing at stake" condition the curve is meant to measure barely exists here.
   The machinery is the deliverable; the curve on USL data is the finding.
+
+These numbers moved once, when the all-null rule landed with phase two: before it,
+`same_fixture_last_season` went into XGBoost as an all-null column, which changed
+which columns the 0.8 column subsample drew. The models are the same models; the
+conclusion did not change.
 
 What the run does prove: the pipeline lands the data, reconstructs standings that
 match the published table exactly, builds every feature without leakage (the
@@ -339,11 +354,13 @@ comparison can be read against noise instead of against a single point estimate.
 |   +-- ingest/           footystats.py (API client), archive.py (durable raw store)
 |   +-- load/             raw.py - upsert into raw_matches
 |   +-- sql/              The SQL layer, six .sql files, one per model
-|   +-- transform/        SQL runner, fifteen data-quality checks, reference-table loader
+|   +-- transform/        SQL runner, seventeen data-quality checks, reference-table loader
 |   +-- features/         Feature list definitions shared by both models
 |   +-- models/           train.py, metrics.py
 |   +-- export/           Tableau extract writer
-|   +-- weather/          Phase two stubs, Open-Meteo
+|   +-- weather/          Phase two: Open-Meteo client and refresh, archive-first
+|   +-- assets/           Phase two: the Dagster assets and asset checks
+|   +-- defs.py           Phase two: Dagster definitions, weekly job and schedule
 |   +-- ref/              Six hand-maintained CSVs. Treat as code, not data
 |   +-- experiments/      The first MVP pass, kept as a working one-file experiment
 +-- data/                 usl.duckdb (gitignored, rebuildable)
@@ -429,23 +446,45 @@ licence, and a machine that stays on.
 strip in Tableau Public against `tableau/extracts/*.csv`; start the 14-day Desktop
 trial only for the live connection and the video.
 
-**The scheduler.** Register `scripts/run_weekly.ps1` in Task Scheduler (or the
-`.sh` in cron) per [docs/mvp/05-mvp-schedule.md](docs/mvp/05-mvp-schedule.md), and
-set `config.CURRENT_SEASON` so the freshness check has something to be fresh about.
+**The weather backfill.** On any machine that can reach Open-Meteo:
+`USL_WEATHER_ENABLED=1 make weather`, then commit `data/raw_archive/open-meteo-*`.
+Twenty-one requests for the example season, no key. Keep the flag set in `.env`
+from then on; the weekly run tops up observations and forecasts.
+
+**The scheduler.** Either register `scripts/run_weekly.ps1` in Task Scheduler (or
+the `.sh` in cron) per [docs/mvp/05-mvp-schedule.md](docs/mvp/05-mvp-schedule.md),
+or run `make dagster` and turn on the `weekly_tuesday` schedule - one or the
+other, never both, since they write the same file. Set `config.CURRENT_SEASON` so
+the freshness check has something to be fresh about.
 
 ---
 
-## Phase two, deferred
+## Phase two, built
 
-Documented, scoped, and not built. Both are clearly labelled future work rather than
-gaps.
+Both pieces the guide deferred are in, and both keep the phase-one commands as
+the source of truth.
 
-- **[Dagster orchestration](docs/phases/11-phase-two-dagster.md)** - asset lineage, run
-  history, asset checks, and materialization metadata plotted over time. Phase one uses
-  a plain scheduled task, which does the job but leaves no run history to browse.
-- **[Weather features via Open-Meteo](docs/phases/12-phase-two-weather.md)** - free, no
-  API key, historical archive plus forecast. Needs `stadiums.csv` with validity ranges
-  so a club that moved grounds does not corrupt its older matches.
+- **[Dagster orchestration](docs/phases/11-phase-two-dagster.md).** `usl/defs.py`
+  and `usl/assets/` wrap the same functions `python -m usl.run` calls: one asset per
+  raw table, reference CSV and SQL model, a multi-asset for the five model tables,
+  one for the extracts, and every data-quality check as a blocking asset check on
+  its tier. Assets run serially in one process, because DuckDB is single-writer,
+  and each writes its stage to the run log under the Dagster run id, so the
+  Tableau tracker keeps working. `make install-dagster` then `make dagster` opens
+  the UI with the `weekly_tuesday` schedule defined; `tests/test_dagster.py`
+  materialises the whole graph on the example season.
+- **[Weather via Open-Meteo](docs/phases/12-phase-two-weather.md).** `usl/weather/`
+  fetches observed daily weather for played home matches and forecasts for the
+  coming ones, one request per club and ground, archived beside the FootyStats
+  responses and never requested twice. `usl/ref/stadiums.csv` has coordinates for
+  every EPL and USL club with validity ranges where a club moved. Five weather
+  features join both models; `weather_source` and the forecast horizon ride along
+  so a forecast is never mistaken for an observation, and a check fails the run
+  if a played match keeps forecast weather. It is off by default: this
+  environment could not reach Open-Meteo, so the example season's weather is not
+  archived yet. Set `USL_WEATHER_ENABLED=1` and run `make weather` once on a
+  connected machine, commit `data/raw_archive/open-meteo-*`, and the features fill
+  in with no further network use.
 
 ---
 

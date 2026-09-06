@@ -32,6 +32,12 @@
 --   is_derby from usl/ref/derbies.csv, either direction. matches_remaining
 --   from int_stakes, which counts the schedule rather than hardcoding it.
 --
+-- WEATHER (phase two)
+--   From stg_weather on (home_club_id, date): observed for a played match once
+--   the archive has it, forecast for a coming fixture, null otherwise. Shared
+--   by both models. weather_source and weather_horizon_days ride along as
+--   non-feature columns so the drill-down can say which kind a row got.
+--
 -- PRO-REL
 --   rank_before and the stakes columns are the home club's int_standings and
 --   int_stakes rows on the match date. opponent_rank_before is the away club's
@@ -133,7 +139,14 @@ joined AS (
         kh.is_mathematically_live,
         kh.points_from_relegation_line,
         -- live on this date: never eliminated, or eliminated later
-        (kh.eliminated_on IS NULL OR m.date < kh.eliminated_on) AS home_is_live
+        (kh.eliminated_on IS NULL OR m.date < kh.eliminated_on) AS home_is_live,
+        w.weather_source,
+        w.forecast_horizon_days AS weather_horizon_days,
+        w.temp_max_c,
+        w.temp_min_c,
+        w.precipitation_mm,
+        w.wind_max_kmh,
+        w.cloud_cover_pct
     FROM stg_matches m
     LEFT JOIN lagged l
       ON l.match_id = m.match_id
@@ -149,6 +162,8 @@ joined AS (
       ON sa.club_id = m.away_club_id AND sa.season = m.season AND sa.date = m.date
     LEFT JOIN int_stakes kh
       ON kh.club_id = m.home_club_id AND kh.season = m.season AND kh.date = m.date
+    LEFT JOIN stg_weather w
+      ON w.club_id = m.home_club_id AND w.date = m.date
     -- a void fixture is not a match: no features, no forecast
     WHERE NOT m.is_void
 )
@@ -160,6 +175,8 @@ SELECT
     j.attendance,
     j.is_played,
     j.is_covid_affected,
+    j.weather_source,
+    j.weather_horizon_days,
     -- calendar and lag
     CAST(j.day_of_week AS INTEGER)                      AS day_of_week,
     CAST(j.month AS INTEGER)                            AS month,
@@ -169,6 +186,12 @@ SELECT
     CAST(j.home_gate_ma3 AS DOUBLE)                     AS home_gate_ma3,
     CAST(j.home_gate_ma5 AS DOUBLE)                     AS home_gate_ma5,
     CAST(j.same_fixture_last_season AS INTEGER)         AS same_fixture_last_season,
+    -- weather (phase two)
+    j.temp_max_c,
+    j.temp_min_c,
+    j.precipitation_mm,
+    j.wind_max_kmh,
+    j.cloud_cover_pct,
     -- match context
     j.opponent_club_id,
     j.is_derby,

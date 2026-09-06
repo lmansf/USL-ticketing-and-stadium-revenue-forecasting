@@ -117,6 +117,10 @@ def synthetic_mart(*, n_future: int = N_FUTURE, seed: int = 0) -> pd.DataFrame:
             )
             history = last_gate[home]
             live = bool(rng.rand() > 0.2)
+            # match-day weather, observed: a warm dry day adds a little to the gate
+            temp_max = float(rng.uniform(5, 30))
+            rain = float(max(0.0, rng.normal(1.0, 2.5)))
+            gate += int(12 * (temp_max - 17)) - int(60 * rain)
             final_gate = max(gate, 500)
             rows.append(
                 {
@@ -127,6 +131,13 @@ def synthetic_mart(*, n_future: int = N_FUTURE, seed: int = 0) -> pd.DataFrame:
                     "attendance": final_gate,
                     "is_played": True,
                     "is_covid_affected": False,
+                    "weather_source": "archive",
+                    "weather_horizon_days": None,
+                    "temp_max_c": round(temp_max, 1),
+                    "temp_min_c": round(temp_max - float(rng.uniform(4, 12)), 1),
+                    "precipitation_mm": round(rain, 1),
+                    "wind_max_kmh": round(float(rng.uniform(5, 45)), 1),
+                    "cloud_cover_pct": round(float(rng.uniform(0, 100)), 1),
                     "day_of_week": dow,
                     "month": date.month,
                     "is_weekend": is_weekend,

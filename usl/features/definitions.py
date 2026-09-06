@@ -36,10 +36,10 @@ class Evidence(StrEnum):
 
 
 # --------------------------------------------------------------------------
-# Family 1: calendar and lag
+# Family 1: calendar, lag, and (phase two) weather
 #
-# Weather joins this family in phase two. It is a shared feature, not a pro-rel
-# one, so it belongs in the base list where both models pick it up.
+# Weather is a shared feature, not a pro-rel one, so it sits in the base list
+# where both models pick it up.
 # --------------------------------------------------------------------------
 
 CALENDAR_FEATURES: tuple[str, ...] = (
@@ -54,6 +54,17 @@ LAG_FEATURES: tuple[str, ...] = (
     "home_gate_ma3",
     "home_gate_ma5",
     "same_fixture_last_season",
+)
+
+# Phase two. Match-day weather at the home ground from Open-Meteo, observed
+# for a played match and forecast for a coming one. Null until the backfill is
+# archived; an all-null weather column is dropped before training.
+WEATHER_FEATURES: tuple[str, ...] = (
+    "temp_max_c",
+    "temp_min_c",
+    "precipitation_mm",
+    "wind_max_kmh",
+    "cloud_cover_pct",
 )
 
 # --------------------------------------------------------------------------
@@ -86,7 +97,9 @@ PROREL_FEATURES: tuple[str, ...] = (
 # The two models
 # --------------------------------------------------------------------------
 
-BASE_FEATURES: tuple[str, ...] = CALENDAR_FEATURES + LAG_FEATURES + CONTEXT_FEATURES
+BASE_FEATURES: tuple[str, ...] = (
+    CALENDAR_FEATURES + LAG_FEATURES + WEATHER_FEATURES + CONTEXT_FEATURES
+)
 
 MODEL_FEATURES: dict[str, tuple[str, ...]] = {
     "baseline": BASE_FEATURES,
@@ -111,6 +124,12 @@ EVIDENCE: dict[str, Evidence] = {
     "home_gate_ma3": Evidence.MEASURED,
     "home_gate_ma5": Evidence.MEASURED,
     "same_fixture_last_season": Evidence.MEASURED,
+    # Weather - findings, once the backfill is archived.
+    "temp_max_c": Evidence.MEASURED,
+    "temp_min_c": Evidence.MEASURED,
+    "precipitation_mm": Evidence.MEASURED,
+    "wind_max_kmh": Evidence.MEASURED,
+    "cloud_cover_pct": Evidence.MEASURED,
     # Match context - findings.
     "opponent_club_id": Evidence.MEASURED,
     "is_derby": Evidence.MEASURED,
@@ -148,6 +167,8 @@ NON_FEATURE_COLUMNS: tuple[str, ...] = (
     "attendance",  # the target. Null for a fixture not yet played
     "is_played",
     "is_covid_affected",
+    "weather_source",  # 'archive', 'forecast', or null when no weather row
+    "weather_horizon_days",  # days out the forecast was made; null for an observation
 )
 
 

@@ -1,3 +1,75 @@
 club_id,stadium,lat,lon,valid_from,valid_to,note
-some_club,Old Ground,27.94,-82.45,2017-01-01,2021-12-31,EXAMPLE ROW - phase two
-some_club,New Ground,27.96,-82.51,2022-01-01,2099-12-31,EXAMPLE ROW - far-future valid_to is deliberate; a null end date means writing the null branch at every join site and someone will forget it
+arsenal,Emirates Stadium,51.5549,-0.1084,2018-07-01,2099-12-31,EPL 2018/19 example season
+atlanta_united_2,Fifth Third Bank Stadium (Kennesaw),34.0270,-84.5670,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+austin_bold,Bold Stadium,30.1345,-97.6359,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+birmingham_legion,Protective Stadium,33.5120,-86.8060,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+bournemouth,Vitality Stadium,50.7352,-1.8383,2018-07-01,2099-12-31,EPL 2018/19 example season
+brighton,Amex Stadium,50.8616,-0.0836,2018-07-01,2099-12-31,EPL 2018/19 example season
+burnley,Turf Moor,53.7890,-2.2302,2018-07-01,2099-12-31,EPL 2018/19 example season
+cardiff_city,Cardiff City Stadium,51.4729,-3.2031,2018-07-01,2099-12-31,EPL 2018/19 example season
+charleston_battery,Patriots Point Soccer Complex,32.7920,-79.9060,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+charlotte_independence,American Legion Memorial Stadium,35.2220,-80.8290,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+chelsea,Stamford Bridge,51.4817,-0.1910,2018-07-01,2099-12-31,EPL 2018/19 example season
+colorado_springs_switchbacks,Weidner Field,38.8330,-104.8280,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+crystal_palace,Selhurst Park,51.3983,-0.0855,2018-07-01,2099-12-31,EPL 2018/19 example season
+detroit_city,Keyworth Stadium,42.3960,-83.0580,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+el_paso_locomotive,Southwest University Park,31.7590,-106.4900,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+everton,Goodison Park,53.4388,-2.9663,2018-07-01,2099-12-31,EPL 2018/19 example season
+fc_cincinnati,Nippert Stadium,39.1310,-84.5160,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+fc_tulsa,ONEOK Field,36.1590,-95.9880,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+fresno_fc,Chukchansi Park,36.7330,-119.7900,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+fulham,Craven Cottage,51.4750,-0.2217,2018-07-01,2099-12-31,EPL 2018/19 example season
+hartford_athletic,Dillon Stadium,41.7570,-72.6640,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+huddersfield_town,John Smith's Stadium,53.6543,-1.7683,2018-07-01,2099-12-31,EPL 2018/19 example season
+indy_eleven,Carroll Stadium,39.7740,-86.1750,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+la_galaxy_ii,Dignity Health Sports Park,33.8640,-118.2610,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+las_vegas_lights,Cashman Field,36.1810,-115.1370,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+leicester_city,King Power Stadium,52.6204,-1.1422,2018-07-01,2099-12-31,EPL 2018/19 example season
+lexington_sc,Lexington SC Stadium,38.0430,-84.4960,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+liverpool,Anfield,53.4308,-2.9608,2018-07-01,2099-12-31,EPL 2018/19 example season
+loudoun_united,Segra Field,39.0480,-77.5320,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+louisville_city,Louisville Slugger Field,38.2560,-85.7440,2017-01-01,2019-12-31,USL Championship 2017-2019; moved to Lynn Family Stadium for 2020
+louisville_city,Lynn Family Stadium,38.2597,-85.7285,2020-01-01,2099-12-31,USL Championship 2020 on
+manchester_city,Etihad Stadium,53.4831,-2.2004,2018-07-01,2099-12-31,EPL 2018/19 example season
+manchester_united,Old Trafford,53.4631,-2.2913,2018-07-01,2099-12-31,EPL 2018/19 example season
+memphis_901,AutoZone Park,35.1420,-90.0500,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+miami_fc,Riccardo Silva Stadium,25.7530,-80.3790,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+monterey_bay,Cardinale Stadium,36.6180,-121.8050,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+nashville_sc,First Tennessee Park,36.1720,-86.7930,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+new_mexico_united,Isotopes Park,35.0780,-106.6280,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+new_york_red_bulls_ii,MSU Soccer Park,40.8620,-74.1990,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+newcastle_united,St James' Park,54.9756,-1.6217,2018-07-01,2099-12-31,EPL 2018/19 example season
+north_carolina_fc,WakeMed Soccer Park,35.7830,-78.8010,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+oakland_roots,Oakland (Laney College / Coliseum),37.7970,-122.2640,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+okc_energy,Taft Stadium,35.5090,-97.5600,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+orange_county_sc,Championship Soccer Stadium,33.6720,-117.7560,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+orlando_city_b,Orlando City Stadium,28.5410,-81.3890,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+ottawa_fury,TD Place Stadium,45.3980,-75.6830,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+penn_fc,FNB Field,40.2530,-76.8890,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+philadelphia_union_ii,Goodman Stadium (Bethlehem),40.5990,-75.3750,2017-01-01,2019-12-31,USL Championship 2017-2019 as Bethlehem Steel FC; sixty miles from the 2020 ground so the range is split
+philadelphia_union_ii,Subaru Park (Chester),39.8320,-75.3780,2020-01-01,2099-12-31,USL Championship 2020 as Philadelphia Union II
+phoenix_rising,Phoenix (Scottsdale / Chandler / downtown grounds),33.4480,-112.0740,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+pittsburgh_riverhounds,Highmark Stadium,40.4363,-80.0106,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+portland_timbers_2,Providence Park / Hillsboro Stadium,45.5210,-122.6920,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+real_monarchs,Zions Bank Stadium,40.5210,-111.9890,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+reno_1868,Greater Nevada Field,39.5290,-119.8080,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+rhode_island_fc,Centreville Bank Stadium (2025; Beirne Stadium 2024),41.8790,-71.3830,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+richmond_kickers,City Stadium,37.5480,-77.4830,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+rio_grande_valley,H-E-B Park,26.2870,-98.1830,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+rochester_rhinos,Capelli Sport Stadium,43.1470,-77.6260,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+sacramento_republic,Heart Health Park,38.5980,-121.5010,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+saint_louis_fc,World Wide Technology Soccer Park,38.5230,-90.4280,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+san_antonio_fc,Toyota Field,29.5500,-98.3910,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+san_diego_loyal,Torero Stadium,32.7720,-117.1900,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+southampton,St Mary's Stadium,50.9058,-1.3910,2018-07-01,2099-12-31,EPL 2018/19 example season
+sporting_kc_ii,Swope Soccer Village / Children's Mercy Park,39.0000,-94.5240,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+tacoma_defiance,Starfire Sports (Tukwila),47.4610,-122.2560,2017-01-01,2017-12-31,USL 2017 as Seattle Sounders FC 2
+tacoma_defiance,Cheney Stadium (Tacoma),47.2380,-122.4870,2018-01-01,2099-12-31,USL Championship 2018 on; Tacoma Defiance from 2019
+tampa_bay_rowdies,Al Lang Stadium,27.7686,-82.6318,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+toronto_fc_ii,Lamport Stadium / Ontario Soccer Centre,43.6390,-79.4230,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+tottenham_hotspur,Wembley Stadium,51.5560,-0.2796,2018-07-01,2019-03-31,EPL 2018/19 example season - played at Wembley while the new ground was built; the real exercise 12.1 case
+tottenham_hotspur,Tottenham Hotspur Stadium,51.6043,-0.0664,2019-04-01,2099-12-31,EPL 2018/19 example season - first league match at the new ground 3 April 2019
+vancouver_whitecaps_2,Thunderbird Stadium,49.2560,-123.2440,2017-01-01,2099-12-31,USL Championship. City-level coordinates: daily weather does not differ across a metro; a move within one is not split
+watford,Vicarage Road,51.6499,-0.4015,2018-07-01,2099-12-31,EPL 2018/19 example season
+west_ham_united,London Stadium,51.5387,-0.0166,2018-07-01,2099-12-31,EPL 2018/19 example season
+wolverhampton_wanderers,Molineux,52.5903,-2.1304,2018-07-01,2099-12-31,EPL 2018/19 example season

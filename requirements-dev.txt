@@ -6,3 +6,5 @@ ruff>=0.4
 mypy>=1.10
 pandas-stubs>=2.2
 types-requests>=2.31
+# Phase two: tests/test_dagster.py materialises the asset graph in-process
+dagster>=1.7

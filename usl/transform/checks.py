@@ -634,6 +634,134 @@ def conference_membership_is_plausible(con: duckdb.DuckDBPyConnection) -> CheckR
     )
 
 
+def home_matches_resolve_to_one_stadium(con: duckdb.DuckDBPyConnection) -> CheckResult:
+    """Fail when a home match matches no stadiums.csv row, or more than one.
+
+    The weather join is on the club and the validity range that covers the
+    match date (phase two, exercise 12.1). Overlapping ranges would duplicate
+    the match in an inner join and a gap between ranges would drop it, both
+    silently; the join is a LEFT JOIN and this check asserts exactly one. A
+    club with no stadium row at all gets no weather and is named here too,
+    because a whole club with null weather is the same silent failure at a
+    larger grain. Scoped to club-seasons in stg_clubs: a club missing from
+    club_conference.csv is already named by all_club_seasons_have_conference,
+    and naming it twice would send the reader to the wrong file.
+
+    Args:
+        con: Open connection.
+
+    Returns:
+        CheckResult with the offending (club_id, date) pairs and clubs.
+    """
+    if not table_exists(con, "stadiums"):
+        return CheckResult(
+            "home_matches_resolve_to_one_stadium",
+            "staging",
+            False,
+            {"reason": "stadiums table missing - the reference tables were not loaded"},
+        )
+    rows = con.execute(
+        """
+        WITH home AS (
+            SELECT m.home_club_id AS club_id, m.date
+            FROM stg_matches m
+            JOIN stg_clubs c ON c.club_id = m.home_club_id AND c.season = m.season
+            WHERE NOT m.is_void
+        ),
+        matched AS (
+            SELECT h.club_id, h.date, count(s.club_id) AS n_rows
+            FROM home h
+            LEFT JOIN stadiums s
+              ON s.club_id = h.club_id
+             AND h.date BETWEEN TRY_CAST(s.valid_from AS DATE) AND TRY_CAST(s.valid_to AS DATE)
+            GROUP BY h.club_id, h.date
+        )
+        SELECT club_id, date, n_rows FROM matched WHERE n_rows <> 1
+        ORDER BY club_id, date
+        """
+    ).fetchall()
+    no_row = sorted({r[0] for r in rows if r[2] == 0})
+    overlapping = [{"club_id": r[0], "date": str(r[1]), "rows": r[2]} for r in rows if r[2] > 1]
+    unresolved = [{"club_id": r[0], "date": str(r[1])} for r in rows if r[2] == 0]
+    metadata: dict[str, Any] = {
+        "n_unresolved": len(unresolved),
+        "unresolved": unresolved[:_LIST_LIMIT],
+        "clubs_without_a_stadium": no_row[:_LIST_LIMIT],
+        "n_overlapping": len(overlapping),
+        "overlapping": overlapping[:_LIST_LIMIT],
+    }
+    if rows:
+        hints = []
+        if unresolved:
+            hints.append(
+                "add a usl/ref/stadiums.csv row for each club named, or close the gap between "
+                "its validity ranges - a home match on a date no range covers gets no weather"
+            )
+        if overlapping:
+            hints.append(
+                "two stadiums.csv rows for the same club cover the same date: end the earlier "
+                "range the day before the later one starts"
+            )
+        metadata["hint"] = ". ".join(hints)
+    return CheckResult("home_matches_resolve_to_one_stadium", "staging", not rows, metadata)
+
+
+def played_weather_is_observed(con: duckdb.DuckDBPyConnection) -> CheckResult:
+    """Fail when a played match old enough for the archive still carries forecast weather.
+
+    A forecast fetched before the match must be replaced by the observation
+    afterwards, or the training data quietly contains predictions. The
+    archive trails real time, so a match younger than
+    config.WEATHER_ARCHIVE_LAG_DAYS is allowed its forecast for now. Played
+    matches with no weather at all are counted, not failed: that is the
+    state before the backfill is archived, and with weather disabled.
+
+    Args:
+        con: Open connection.
+
+    Returns:
+        CheckResult with the stale rows and the count of played rows without
+        weather.
+    """
+    on = dt.date.today()
+    cutoff = on - dt.timedelta(days=config.WEATHER_ARCHIVE_LAG_DAYS)
+    stale = con.execute(
+        """
+        SELECT match_id, home_club_id, date
+        FROM mart_match_features
+        WHERE is_played AND weather_source = 'forecast' AND date <= ?
+        ORDER BY date, match_id
+        """,
+        [cutoff],
+    ).fetchall()
+    counts = con.execute(
+        """
+        SELECT
+            count(*) FILTER (WHERE is_played AND weather_source IS NULL),
+            count(*) FILTER (WHERE is_played AND weather_source = 'archive'),
+            count(*) FILTER (WHERE NOT is_played AND weather_source = 'forecast')
+        FROM mart_match_features
+        """
+    ).fetchone() or (0, 0, 0)
+    metadata: dict[str, Any] = {
+        "n_stale_forecasts": len(stale),
+        "stale_forecasts": [
+            {"match_id": r[0], "club_id": r[1], "date": str(r[2])} for r in stale[:_LIST_LIMIT]
+        ],
+        "played_without_weather": int(counts[0]),
+        "played_observed": int(counts[1]),
+        "fixtures_forecast": int(counts[2]),
+        "archive_lag_days": config.WEATHER_ARCHIVE_LAG_DAYS,
+    }
+    if stale:
+        metadata["hint"] = (
+            "run 'python -m usl.run weather' with USL_WEATHER_ENABLED=1: the archive "
+            "should have these dates by now, and the refresh replaces forecast rows with "
+            "observations"
+        )
+    return CheckResult("played_weather_is_observed", "mart", not stale, metadata)
+
+
 def conference_structure_is_well_formed(con: duckdb.DuckDBPyConnection) -> CheckResult:
     """Fail when conference_structure.csv cannot mean what it says.
 
@@ -929,6 +1057,11 @@ STAGING_CHECKS: tuple[Check, ...] = (
     conference_structure_is_well_formed,
     derby_clubs_are_known,
     played_rows_consistent,
+    home_matches_resolve_to_one_stadium,
 )
 INTERMEDIATE_CHECKS: tuple[Check, ...] = (no_future_leakage,)
-MART_CHECKS: tuple[Check, ...] = (features_not_null, mart_matches_staging)
+MART_CHECKS: tuple[Check, ...] = (
+    features_not_null,
+    mart_matches_staging,
+    played_weather_is_observed,
+)

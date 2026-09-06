@@ -1,8 +1,9 @@
-"""Weather features via Open-Meteo. PHASE TWO - deferred.
+"""Weather features via Open-Meteo. Phase two, built.
 
-Phase one ships without weather. Both models train without it, and weather is a
-shared feature rather than a pro-rel one, so its absence does not confound the
-headline comparison.
+Weather is a shared feature, not a pro-rel one: it joins the base feature
+list, both models pick it up, and its absence does not confound the headline
+comparison. Off by default (config.WEATHER_ENABLED) until the backfill has been
+archived on a connected machine; the pipeline runs either way.
 
 See docs/phases/12-phase-two-weather.md
 """

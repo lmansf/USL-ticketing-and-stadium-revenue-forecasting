@@ -22,7 +22,9 @@ help:
 	@echo "  make transform      Run the SQL layer: staging, intermediate, mart"
 	@echo "  make train          Train both models, write metrics and importance"
 	@echo "  make export         Write Tableau extracts to tableau/extracts/"
-	@echo "  make weekly         The full Tuesday run: ingest, transform, train, export"
+	@echo "  make weather        Phase two: match-day weather from Open-Meteo (needs USL_WEATHER_ENABLED=1)"
+	@echo "  make weekly         The full Tuesday run: ingest, weather, transform, train, export"
+	@echo "  make dagster        Phase two: the same pipeline as a Dagster asset graph (UI on :3000)"
 	@echo ""
 	@echo "Quality"
 	@echo "  make test           Run the test suite"
@@ -84,9 +86,23 @@ train:
 export:
 	$(PYTHON) -m usl.run export --db $(DB)
 
+.PHONY: weather
+weather:
+	$(PYTHON) -m usl.run weather --db $(DB)
+
 .PHONY: weekly
 weekly:
 	$(PYTHON) -m usl.run weekly --db $(DB)
+
+# Phase two. The same pipeline as an asset graph with run history and lineage:
+# opens the Dagster UI on http://localhost:3000 with the weekly schedule defined.
+.PHONY: install-dagster
+install-dagster:
+	$(PYTHON) -m pip install -e ".[dagster]"
+
+.PHONY: dagster
+dagster:
+	$(PYTHON) -m dagster dev -m usl.defs
 
 .PHONY: test
 test:

@@ -304,8 +304,55 @@ ALLOWED_NULL_FEATURES: frozenset[str] = frozenset(
         "home_gate_ma3",  # ditto, plus the two after it
         "home_gate_ma5",
         "same_fixture_last_season",  # first meeting between two clubs
+        # Phase two weather. Null until the Open-Meteo backfill is archived, and
+        # null for a fixture beyond the forecast horizon; both are expected, and
+        # an all-null weather column is dropped before training rather than fed
+        # to the model as a constant.
+        "temp_max_c",
+        "temp_min_c",
+        "precipitation_mm",
+        "wind_max_kmh",
+        "cloud_cover_pct",
     }
 )
+
+
+# --------------------------------------------------------------------------
+# Phase two: weather via Open-Meteo
+#
+# Off by default. The archive-only run and CI have no network and, until the
+# backfill has been run once on a connected machine, no archived weather. With
+# it off the weather stage records that it was skipped and the weather columns
+# are null. Set USL_WEATHER_ENABLED=1 in .env after the backfill; from then on
+# a season already archived costs no request, and only forecasts for the
+# coming fixtures go to the network. See docs/phases/12-phase-two-weather.md
+# --------------------------------------------------------------------------
+
+WEATHER_ENABLED: bool = os.environ.get("USL_WEATHER_ENABLED", "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+
+# --------------------------------------------------------------------------
+# Phase two: the Dagster schedule (usl/defs.py). Tuesday 06:00, same day as
+# the phase-one scheduled task and for the same reason. Cron in the timezone
+# below; set it to the machine's zone when you register the schedule.
+# --------------------------------------------------------------------------
+
+SCHEDULE_CRON: str = "0 6 * * 2"
+SCHEDULE_TZ: str = "UTC"
+
+# Open-Meteo's forecast horizon. A fixture further out than this has no weather
+# row until it comes inside the window.
+WEATHER_FORECAST_DAYS: int = 16
+
+# The observed archive trails real time by about five days (ERA5 reanalysis).
+# A played match older than this that still carries forecast weather is
+# overdue for the archive and the played_weather_is_observed check names it;
+# a younger one is simply not available yet.
+WEATHER_ARCHIVE_LAG_DAYS: int = 7
 
 
 # --------------------------------------------------------------------------

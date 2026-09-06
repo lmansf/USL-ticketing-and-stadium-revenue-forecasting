@@ -12,12 +12,14 @@ usl/
 +-- ingest/           footystats.py (API client), archive.py (durable raw store)
 +-- load/             raw.py - upsert into raw_matches with the insert/update/unchanged split
 +-- sql/              The SQL layer, six .sql files, one per model
-+-- transform/        runner.py (materialise in order), checks.py (fifteen data-quality checks),
++-- transform/        runner.py (materialise in order), checks.py (seventeen data-quality checks),
 |                     reference.py (the CSVs and ref_config, one place)
 +-- features/         definitions.py - the feature families and their evidence class
 +-- models/           train.py, metrics.py
 +-- export/           extracts.py - Tableau CSV, Hyper via pantab if present
-+-- weather/          Phase two stubs, Open-Meteo. Still stubs, deliberately
++-- weather/          Phase two: open_meteo.py (client), refresh.py (what to fetch), schema.py
++-- assets/           Phase two: Dagster assets, one thin wrapper per phase-one call
++-- defs.py           Phase two: Dagster definitions, the weekly job and schedule
 +-- ref/              Six hand-maintained CSVs. Code, not data
 +-- experiments/      Scratch workspace from the first MVP pass. Not package code
 ```

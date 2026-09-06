@@ -67,6 +67,8 @@ something:
 
 Registration walkthrough: [docs/mvp/05-mvp-schedule.md](../docs/mvp/05-mvp-schedule.md)
 
-Phase two replaces this with Dagster, which brings run history and asset lineage.
-The scheduled task does the job; what it does not give you is anything to browse.
+Phase two offers Dagster instead, which brings run history and asset lineage:
+`make dagster` opens the UI with the `weekly_tuesday` schedule defined, running the
+same stages through the same functions. Use one scheduler or the other, never both -
+they write the same database file.
 See [docs/phases/11-phase-two-dagster.md](../docs/phases/11-phase-two-dagster.md).

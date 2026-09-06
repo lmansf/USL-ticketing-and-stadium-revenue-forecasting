@@ -17,6 +17,8 @@ import pytest
 
 from usl import config
 from usl.transform.reference import create_ref_config, register_reference_frame
+from usl.transform.runner import materialise
+from usl.weather.schema import ensure_weather_table
 
 
 @pytest.fixture
@@ -186,6 +188,8 @@ def stage_frames(
     structure: pd.DataFrame | None = None,
     derbies: pd.DataFrame | None = None,
     void: list[str] | None = None,
+    stadiums: pd.DataFrame | None = None,
+    weather: pd.DataFrame | None = None,
 ) -> None:
     """Stand up the staging tier and reference tables straight from small frames.
 
@@ -202,6 +206,12 @@ def stage_frames(
             one relegation spot for every (season, conference) in clubs.
         derbies: derbies rows. Defaults to none.
         void: match_ids to mark is_void (a cancelled fixture). Defaults to none.
+        stadiums: stadiums rows (club_id, stadium, lat, lon, valid_from,
+            valid_to, note). Defaults to one row per club covering every date.
+        weather: raw_weather-shaped rows (club_id, date, weather_source,
+            forecast_horizon_days, temperature_2m_max, temperature_2m_min,
+            precipitation_sum, wind_speed_10m_max, cloud_cover_mean). Defaults
+            to none, so the weather features are null.
     """
     create_ref_config(con)
 
@@ -261,6 +271,38 @@ def stage_frames(
     if derbies is None:
         derbies = pd.DataFrame(columns=["club_id_a", "club_id_b", "note"])
     register_reference_frame(con, "derbies", derbies)
+
+    if stadiums is None:
+        stadiums = pd.DataFrame(
+            [
+                (club_id, f"{club_id} ground", 40.0, -80.0, "2000-01-01", "2099-12-31", "test")
+                for club_id in sorted(clubs["club_id"].astype(str).unique())
+            ],
+            columns=["club_id", "stadium", "lat", "lon", "valid_from", "valid_to", "note"],
+        )
+    register_reference_frame(con, "stadiums", stadiums)
+
+    con.execute("DROP TABLE IF EXISTS raw_weather")
+    ensure_weather_table(con)
+    if weather is not None and not weather.empty:
+        frame = weather.copy()
+        frame["lat"] = 40.0
+        frame["lon"] = -80.0
+        frame["fetched_at"] = dt.datetime(2024, 3, 19, 6, 0, 0)
+        frame["source_file"] = "test"
+        con.register("_weather", frame)
+        con.execute(
+            """
+            INSERT INTO raw_weather
+            SELECT CAST(club_id AS VARCHAR), CAST(date AS DATE), lat, lon,
+                   CAST(weather_source AS VARCHAR), CAST(forecast_horizon_days AS INTEGER),
+                   temperature_2m_max, temperature_2m_min, precipitation_sum,
+                   wind_speed_10m_max, cloud_cover_mean, fetched_at, source_file
+            FROM _weather
+            """
+        )
+        con.unregister("_weather")
+    materialise(con, "stg_weather")
 
 
 def with_unplayed(frame: pd.DataFrame, match_ids: list[str]) -> pd.DataFrame:
