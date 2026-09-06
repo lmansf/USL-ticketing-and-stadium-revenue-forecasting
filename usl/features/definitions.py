@@ -131,6 +131,26 @@ EVIDENCE: dict[str, Evidence] = {
 }
 
 
+# --------------------------------------------------------------------------
+# Mart columns that are not features
+#
+# Keys, the target, and the two flags the training step filters on. The mart
+# is exactly these plus all_features(), in that order; tests/test_features.py
+# enforces both directions so a column cannot be built without being named
+# here and a feature cannot be named without being built.
+# --------------------------------------------------------------------------
+
+NON_FEATURE_COLUMNS: tuple[str, ...] = (
+    "match_id",
+    "season",
+    "date",
+    "home_club_id",
+    "attendance",  # the target. Null for a fixture not yet played
+    "is_played",
+    "is_covid_affected",
+)
+
+
 def is_prorel(feature: str) -> bool:
     """Whether a feature belongs to the pro-rel family.
 
@@ -149,3 +169,8 @@ def is_prorel(feature: str) -> bool:
 def all_features() -> tuple[str, ...]:
     """Every feature across all families, in a stable order."""
     return BASE_FEATURES + PROREL_FEATURES
+
+
+def mart_columns() -> tuple[str, ...]:
+    """The exact column list of mart_match_features, keys first."""
+    return NON_FEATURE_COLUMNS + all_features()

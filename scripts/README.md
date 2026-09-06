@@ -9,7 +9,7 @@ the pipeline's internals is a scheduler you have to keep in sync with it.
 
 | File | Purpose |
 |---|---|
-| `check_attendance_coverage.py` | **Run this before you subscribe.** Real working script, not a stub |
+| `check_attendance_coverage.py` | **Run this before you subscribe.** Real working script, serves from the archive when the response is already there |
 | `run_weekly.ps1` | Weekly run, Windows Task Scheduler |
 | `run_weekly.sh` | Weekly run, cron / launchd / systemd timer |
 
@@ -25,7 +25,22 @@ the whole project rests on. It reports the share of matches carrying a usable fi
 and the median, because the dangerous outcome is a field that exists but is mostly
 zeroes - a yes/no check calls that a pass. Exits non-zero below 80 percent populated.
 
+The first command passes today, offline, against the archived example season: 380 of
+380 matches populated, median 31,957. That proves the schema, not USL coverage. The
+second command is the one that decides the project and it needs the subscription.
+
 See [phase 00](../docs/phases/00-data-access-and-the-clock.md#the-gate-verify-attendance-before-you-pay).
+
+## Exit codes
+
+The weekly scripts propagate the pipeline's exit code so the scheduler's result means
+something:
+
+| Code | Meaning |
+|---|---|
+| 0 | Every stage succeeded and every check passed |
+| 1 | A stage failed or a data-quality check failed. The run log row names it |
+| 3 | The database was locked by another process for the whole retry window. Only the file log has it - the run log lives in the locked database |
 
 ## Scheduling
 

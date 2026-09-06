@@ -1,4 +1,41 @@
 raw_name,club_id,note
-Tampa Bay Rowdies,tampa_bay_rowdies,EXAMPLE ROW - replace with real data
-Rowdies,tampa_bay_rowdies,EXAMPLE ROW - short form seen on standings pages
-Ottawa Fury FC,ottawa_fury,EXAMPLE ROW - folded 2020
+59,arsenal,FootyStats club id - EPL 2018/19 example season (season_id 1625)
+92,tottenham_hotspur,FootyStats club id - EPL 2018/19 example season
+93,manchester_city,FootyStats club id - EPL 2018/19 example season
+108,leicester_city,FootyStats club id - EPL 2018/19 example season
+143,crystal_palace,FootyStats club id - EPL 2018/19 example season
+144,everton,FootyStats club id - EPL 2018/19 example season
+145,burnley,FootyStats club id - EPL 2018/19 example season
+146,southampton,FootyStats club id - EPL 2018/19 example season
+148,bournemouth,FootyStats club id - EPL 2018/19 example season
+149,manchester_united,FootyStats club id - EPL 2018/19 example season
+151,liverpool,FootyStats club id - EPL 2018/19 example season
+152,chelsea,FootyStats club id - EPL 2018/19 example season
+153,west_ham_united,FootyStats club id - EPL 2018/19 example season
+155,watford,FootyStats club id - EPL 2018/19 example season
+157,newcastle_united,FootyStats club id - EPL 2018/19 example season
+161,cardiff_city,FootyStats club id - EPL 2018/19 example season
+162,fulham,FootyStats club id - EPL 2018/19 example season
+209,brighton,FootyStats club id - EPL 2018/19 example season
+217,huddersfield_town,FootyStats club id - EPL 2018/19 example season
+223,wolverhampton_wanderers,FootyStats club id - EPL 2018/19 example season
+Arsenal,arsenal,display name as returned by the API (home_name) in 2026
+Tottenham Hotspur,tottenham_hotspur,display name as returned by the API in 2026
+Manchester City,manchester_city,display name as returned by the API in 2026
+Leicester City,leicester_city,display name as returned by the API in 2026
+Crystal Palace,crystal_palace,display name as returned by the API in 2026
+Everton,everton,display name as returned by the API in 2026
+Burnley,burnley,display name as returned by the API in 2026
+Southampton,southampton,display name as returned by the API in 2026
+AFC Bournemouth,bournemouth,display name as returned by the API in 2026
+Manchester United,manchester_united,display name as returned by the API in 2026
+Liverpool,liverpool,display name as returned by the API in 2026
+Chelsea,chelsea,display name as returned by the API in 2026
+West Ham United,west_ham_united,display name as returned by the API in 2026
+Watford,watford,display name as returned by the API in 2026
+Newcastle United,newcastle_united,display name as returned by the API in 2026
+Cardiff City,cardiff_city,display name as returned by the API in 2026
+Fulham,fulham,display name as returned by the API in 2026
+Brighton & Hove Albion,brighton,display name as returned by the API in 2026
+Huddersfield Town,huddersfield_town,display name as returned by the API in 2026
+Wolverhampton Wanderers,wolverhampton_wanderers,display name as returned by the API in 2026

@@ -9,7 +9,7 @@ Workspace for the first pass at the MVP. Reference docs live under
 | `write_raw.py` | Fetches and archives a league-matches payload |
 | `create_raw_tables.py` | Drift guard, coverage check, and a raw table in `raw.db` |
 | `display_raw.py` | Reads it back |
-| `league-matches_season_1.json` | The archived response. EPL 2018/19 via the free `example` key |
+| `../../../data/raw_archive/league-matches_season_id_1625.json` | The archived response. EPL 2018/19 via the free `example` key. Moved to the archive, where phase 00 says it belongs |
 
 ---
 
@@ -37,7 +37,7 @@ Straight from an archived payload, which is the shortest path from MVP 01 to MVP
 
 ```
 python "usl/experiments/MVP 1/mvp02_sql_and_features.py" \
-    --from-json "usl/experiments/MVP 1/league-matches_season_1.json"
+    --from-json data/raw_archive/league-matches_season_id_1625.json
 ```
 
 That builds `raw_matches` from the payload directly, so nothing has to be staged
@@ -68,7 +68,7 @@ Point `--db` at it and the error names every missing column and what each is for
 
 ```
 cd "usl/experiments/MVP 1"
-python mvp02_sql_and_features.py --from-json league-matches_season_1.json
+python mvp02_sql_and_features.py --from-json ../../../data/raw_archive/league-matches_season_id_1625.json
 ```
 
 Builds `raw_matches` from the payload in memory. Nothing to rebuild, nothing to
@@ -233,7 +233,7 @@ Fill in as you go. This is the part worth reviewing.
 | | |
 |---|---|
 | Date run | 2026-09-05 |
-| Source | `league-matches_season_1.json` (season id 1625) |
+| Source | `data/raw_archive/league-matches_season_id_1625.json` (season id 1625) |
 | `raw_matches` rows | 380 |
 | `stg_matches` rows | 380 |
 | `mart_match_features` rows | 380 |

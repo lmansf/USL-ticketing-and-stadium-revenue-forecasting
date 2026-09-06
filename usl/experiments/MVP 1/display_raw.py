@@ -1,3 +1,4 @@
+from pathlib import Path
 import json
 
 class SchemaDriftError(Exception):
@@ -16,7 +17,10 @@ def null_coverage(dataset, required):
         counts[field] = (present, total)
     return counts
 
-with open("league-matches_season_1.json", "r", encoding="utf-8") as file:
+# The archived response moved to data/raw_archive/ (phase 00: the archive is the
+# durable copy). Read it from there.
+ARCHIVE = Path(__file__).resolve().parents[3] / "data" / "raw_archive" / "league-matches_season_id_1625.json"
+with open(ARCH, "r", encoding="utf-8") as file:
     content = json.load(file)
 
 dataset = content["data"]

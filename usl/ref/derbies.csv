@@ -1,2 +1,20 @@
 club_id_a,club_id_b,note
-tampa_bay_rowdies,ottawa_fury,EXAMPLE ROW - record the rule you used to decide what counts
+manchester_united,manchester_city,RULE USED FOR THIS FILE: two clubs count as a derby when they share a city or metro area OR when both clubs market the fixture as a derby. Same city, Manchester.
+liverpool,everton,Same city, Merseyside derby
+arsenal,tottenham_hotspur,Same city, north London
+arsenal,chelsea,Same city, London
+arsenal,crystal_palace,Same city, London
+arsenal,fulham,Same city, London
+arsenal,west_ham_united,Same city, London
+chelsea,tottenham_hotspur,Same city, London
+chelsea,crystal_palace,Same city, London
+chelsea,fulham,Same city, west London
+chelsea,west_ham_united,Same city, London
+crystal_palace,tottenham_hotspur,Same city, London
+crystal_palace,fulham,Same city, London
+crystal_palace,west_ham_united,Same city, London
+fulham,tottenham_hotspur,Same city, London
+fulham,west_ham_united,Same city, London
+tottenham_hotspur,west_ham_united,Same city, London
+crystal_palace,brighton,Marketed as a derby by both clubs (the M23 derby) despite 40 miles between them
+southampton,bournemouth,Marketed as a derby by both clubs (south coast) - same region

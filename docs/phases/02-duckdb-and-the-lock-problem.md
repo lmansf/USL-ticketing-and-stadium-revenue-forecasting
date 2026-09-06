@@ -119,6 +119,13 @@ This is the one exercise in the guide left completely unguided, because it is th
 where the reasoning matters more than the code, and because you asked to hit it
 yourself first.
 
+> **Resolved in this build.** The route taken is retry with backoff, lock errors only,
+> then a failure naming the holding process and PID; `commit_and_swap` was deleted. The
+> reasoning - why a swap does not fix the failure it is meant to fix, and what the run
+> log can and cannot record when the database itself is the thing locked - is in
+> [reference/build-decisions.md](../reference/build-decisions.md#phase-02---the-lock),
+> and `tests/test_db_lock.py` covers the five scenarios above.
+
 ---
 
 ## What "done" looks like

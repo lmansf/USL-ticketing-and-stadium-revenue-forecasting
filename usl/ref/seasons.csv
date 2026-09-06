@@ -1,3 +1,11 @@
 season,season_id,note
-2019,,EXAMPLE ROW - run league-list during the subscription window and fill in season_id
-2020,,EXAMPLE ROW - covid affected
+2018,1625,EPL 2018/19 served by the free example key. NOT a USL season - it is the season the whole pipeline is built and tested against before subscribing. Before backfilling USL: delete this row and run make clean-db so one database holds one league.
+2017,,TODO during the subscription month: run python -m usl.run league-list and paste the USL Championship 2017 season_id here
+2019,,TODO during the subscription month: season_id from league-list
+2020,,TODO during the subscription month: season_id from league-list. COVID-affected - see config.COVID_START and COVID_END
+2021,,TODO during the subscription month: season_id from league-list. Partly COVID-affected
+2022,,TODO during the subscription month: season_id from league-list
+2023,,TODO during the subscription month: season_id from league-list
+2024,,TODO during the subscription month: season_id from league-list
+2025,,TODO during the subscription month: season_id from league-list
+2026,,TODO during the subscription month: season_id from league-list. The season in progress - set config.CURRENT_SEASON = 2026 once it is here

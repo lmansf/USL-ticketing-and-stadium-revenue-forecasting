@@ -6,7 +6,14 @@ workspace with a findings log, not a copy of the guide - the reference docs live
 
 | Folder | Step | Guide |
 |---|---|---|
-| `MVP 1` | First MVP pass. Currently holds the MVP 02 SQL and features step as one runnable file | [docs/mvp/02](../../docs/mvp/02-mvp-sql-and-features.md) |
+| `MVP 1` | First MVP pass. Holds the MVP 02 SQL and features step as one runnable file, plus the scripts that first pulled and inspected the example season | [docs/mvp/02](../../docs/mvp/02-mvp-sql-and-features.md) |
+
+**What happened next.** The full track was then built in the package proper - every
+stub under `usl/`, every test, the CLI, the demos - against the same example season,
+and the archived response moved to `data/raw_archive/` where phase 00 says it
+belongs. The scripts here still run against it at that path. What was decided along
+the way is in [docs/reference/build-decisions.md](../../docs/reference/build-decisions.md);
+the findings below were the input to those decisions.
 
 Each page ends with a **Findings** section. That is the point of the folder: the guide
 tells you what to do, and the findings record what actually happened - the real field

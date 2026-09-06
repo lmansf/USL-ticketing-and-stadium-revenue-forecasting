@@ -6,6 +6,17 @@ as received.
 **This directory is committed to git, and that is deliberate.** It is the one place in
 the repo where that rule applies to data.
 
+## What is here
+
+| File | What | Rows |
+|---|---|---|
+| `league-matches_season_id_1625.json` | EPL 2018/19, the season the free `example` key serves. Pulled 2026-09-05 | 380 matches, attendance on all 380 |
+
+That single file is what the whole pipeline runs from today, and what every test and
+demo uses. The USL seasons land here during the subscription month, one file per
+`league-matches` request (plus `league-tables_season_id_<id>.json` per season as a
+standings cross-check, and paged responses as `..._page_2.json` and so on).
+
 ## Why
 
 The FootyStats subscription runs for one month. When it lapses, this directory is the
@@ -26,21 +37,26 @@ this directory alone:
 make backfill
 make transform
 make train
+make export
 ```
 
 If that passes, the subscription can lapse and the project survives. It is also what
 makes this repo runnable by someone who has never paid FootyStats anything, which is
-most people who will look at it.
+most people who will look at it. It passes today.
 
 ## Rules
 
 - **Written before parsing.** A malformed payload still lands here, so a parse bug
-  costs you a debugging session rather than a request.
+  costs you a debugging session rather than a request. The one exception: a response
+  whose body says `"success": false` is removed again, because an error body served
+  as an archive hit for ever is worse than a missing file.
 - **Byte for byte.** Not pretty-printed, not re-encoded. What is on disk is what the
   API said.
 - **No API key.** Not in a filename, not inside a file. These go into git; the key
-  does not.
-- **Readable filenames.** `league-matches_season_1625.json`, not a hash. You will need
-  to browse this while the clock is running to work out what you have not pulled yet.
+  does not. `archive_path()` strips the key before it builds the name.
+- **Readable filenames.** `<endpoint>_<param>_<value>.json` with the parameters
+  sorted - `league-matches_season_id_1625.json`, not a hash. You will need to browse
+  this while the clock is running to work out what you have not pulled yet;
+  `python -m usl.run archive` summarises it.
 
 See [docs/phases/00-data-access-and-the-clock.md](../../docs/phases/00-data-access-and-the-clock.md).

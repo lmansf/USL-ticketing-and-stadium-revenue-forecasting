@@ -27,9 +27,7 @@ DAILY_FIELDS: tuple[str, ...] = (
 )
 
 
-def fetch_archive(
-    lat: float, lon: float, start: dt.date, end: dt.date
-) -> pd.DataFrame:
+def fetch_archive(lat: float, lon: float, start: dt.date, end: dt.date) -> pd.DataFrame:
     """Fetch observed daily weather for one location over a date range.
 
     One call per club covering its full date range, not one call per match -

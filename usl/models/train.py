@@ -148,9 +148,7 @@ def extract_importance(model: object, features: tuple[str, ...]) -> pd.DataFrame
     raise NotImplementedError("TODO: see docs/phases/07-two-models.md, exercise 7.1")
 
 
-def train_all(
-    con: duckdb.DuckDBPyConnection, run_date: dt.date | None = None
-) -> None:
+def train_all(con: duckdb.DuckDBPyConnection, run_date: dt.date | None = None) -> None:
     """Train every model, plus the naive baseline, and write all three tables.
 
     Feature importance says a feature was used. Error says it helped. Log both

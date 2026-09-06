@@ -8,8 +8,10 @@ docs/reference/open-questions.md.
 
 from __future__ import annotations
 
+import csv
 import datetime as dt
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -38,7 +40,27 @@ EXTRACT_DIR: Path = PROJECT_ROOT / "tableau" / "extracts"
 FIXTURE_DIR: Path = PROJECT_ROOT / "demo" / "fixtures"
 
 DB_PATH: Path = DATA_DIR / "usl.duckdb"
-DB_TMP_PATH: Path = DATA_DIR / "usl.duckdb.tmp"
+
+# Hand-maintained reference files. Code, not data - see usl/ref/README.md.
+CLUB_ALIASES_CSV: Path = REF_DIR / "club_aliases.csv"
+CLUB_CONFERENCE_CSV: Path = REF_DIR / "club_conference.csv"
+CONFERENCE_STRUCTURE_CSV: Path = REF_DIR / "conference_structure.csv"
+DERBIES_CSV: Path = REF_DIR / "derbies.csv"
+STADIUMS_CSV: Path = REF_DIR / "stadiums.csv"
+
+
+# --------------------------------------------------------------------------
+# The DuckDB lock
+#
+# DuckDB is single-writer. The route taken for the unguided exercise in
+# docs/phases/02-duckdb-and-the-lock-problem.md is RETRY, not write-to-temp-
+# and-swap: a held lock is retried with exponential backoff and then reported
+# with a message that names the holder. The reasoning is in
+# docs/reference/build-decisions.md. These are the retry parameters.
+# --------------------------------------------------------------------------
+
+LOCK_MAX_ATTEMPTS: int = 5
+LOCK_BACKOFF_BASE_SECONDS: float = 2.0  # 2, 4, 8, 16 - about 30 seconds in total
 
 
 # --------------------------------------------------------------------------
@@ -49,18 +71,68 @@ DB_TMP_PATH: Path = DATA_DIR / "usl.duckdb.tmp"
 # Championship 2019" to its id is discovered from the league-list endpoint and
 # written into usl/ref/seasons.csv, which is loaded at runtime.
 #
-# TODO: run league-list during the subscription window and fill in seasons.csv.
+# Rows with an empty season_id are skipped by the backfill and reported, so the
+# file doubles as the "what have I not pulled yet" list while the clock runs.
 # You cannot rebuild that mapping after access lapses.
 # See docs/reference/open-questions.md#season-ids
 SEASONS_CSV: Path = REF_DIR / "seasons.csv"
 
-# TODO: the season currently in progress, or None outside the season.
+# The season currently in progress, or None when the data is archive-only.
+#
+# None is what makes the freshness check pass on an archived season: with no
+# current season configured there is nothing that could be fresh, and the check
+# records that reason instead of failing every run for ever. Set this when a
+# live season is being ingested weekly.
 CURRENT_SEASON: int | None = None
 
-# TODO: approximate season boundaries, used by the freshness check to avoid
-# firing every week of the off-season. Month/day only - applied to the current year.
+# Approximate season boundaries, used by the freshness check to avoid firing
+# every week of the off-season. Month/day only - applied to the current year.
+# USL Championship runs roughly March to November.
 SEASON_START_MD: tuple[int, int] = (3, 1)
 SEASON_END_MD: tuple[int, int] = (11, 15)
+
+# The API returns kick-off as unix seconds (UTC). The match DATE - which drives
+# day_of_week and is_weekend - is taken in this zone. UTC is exact for the
+# example season (England never crosses midnight UTC on a kick-off). For USL it
+# is a JUDGEMENT CALL: a 7:30pm Pacific kick-off is already Sunday in UTC. Set
+# a US zone here before pointing the pipeline at USL data, or extend
+# stadiums.csv with a per-club zone. See docs/reference/build-decisions.md.
+MATCH_TZ: str = "UTC"
+
+
+@dataclass(frozen=True)
+class SeasonRow:
+    """One row of usl/ref/seasons.csv."""
+
+    season: int
+    season_id: int | None
+    note: str
+
+
+def read_seasons_csv(path: Path | None = None) -> list[SeasonRow]:
+    """Read the season-year to FootyStats season_id mapping.
+
+    A blank season_id reads as None rather than failing, because the file is
+    meant to hold the seasons you intend to pull before you know their ids.
+
+    Args:
+        path: Defaults to SEASONS_CSV.
+
+    Returns:
+        Rows in file order.
+    """
+    rows: list[SeasonRow] = []
+    with open(path or SEASONS_CSV, encoding="utf-8", newline="") as fh:
+        for rec in csv.DictReader(fh):
+            raw_id = (rec.get("season_id") or "").strip()
+            rows.append(
+                SeasonRow(
+                    season=int(rec["season"]),
+                    season_id=int(raw_id) if raw_id else None,
+                    note=(rec.get("note") or "").strip(),
+                )
+            )
+    return rows
 
 
 # --------------------------------------------------------------------------
@@ -131,17 +203,24 @@ DROP_COVID: bool = True
 # See docs/phases/04-standings-as-of-match-date.md
 RANK_SCOPE: str = "conference"
 
-# TODO: playoff qualifying positions per conference. This has changed across
-# seasons, so a single number is wrong for some of them. Consider moving to a
-# reference file keyed by (season, conference).
+# Playoff qualifying positions per conference live in
+# usl/ref/conference_structure.csv keyed by (season, conference), because the
+# number has changed across seasons and a single constant is wrong for some of
+# them. This is the fallback for a (season, conference) with no row there.
+# None means NO fallback: the stakes features come out null and the
+# features_not_null check stops the run naming the column - which is the
+# right outcome for a season nobody has looked up yet.
 # See docs/reference/open-questions.md#the-playoff-line
-PLAYOFF_SPOTS_PER_CONFERENCE: int | None = None
+DEFAULT_PLAYOFF_SPOTS: int | None = None
 
-# TODO: assumed relegation cutoff for the instrumented, unvalidated feature
-# points_from_relegation_line. No relegation exists in the data, so this number
-# is an assumption you are making visible rather than a measurement.
+# Assumed relegation cutoff for the instrumented, unvalidated feature
+# points_from_relegation_line. No relegation exists in USL data, so this number
+# is an assumption made visible rather than a measurement. It applies where
+# conference_structure.csv leaves relegation_spots blank. Bottom two per
+# conference is the assumption; USL has not published the 2028 structure in
+# enough detail to do better. State it wherever the feature appears.
 # See docs/reference/open-questions.md#the-relegation-line
-ASSUMED_RELEGATION_SPOTS: int | None = None
+ASSUMED_RELEGATION_SPOTS: int = 2
 
 
 # --------------------------------------------------------------------------
@@ -154,6 +233,11 @@ TARGET: str = "attendance"
 TEST_FRACTION: float = 0.2
 
 RANDOM_STATE: int = 42
+
+# Seeds for the run-to-run variance estimate (exercise 7.2). The first is the
+# one whose metrics are written to model_metrics; the spread across all of them
+# is written to model_variance so the A-to-B gap can be read against noise.
+VARIANCE_SEEDS: tuple[int, ...] = (42, 7, 19, 101)
 
 # XGBoost keyword arguments. Defaults are deliberate - tuning is not where the
 # value is in this project.
@@ -178,6 +262,10 @@ MAX_MATCH_AGE_DAYS: int = 10
 
 # Feature columns permitted to contain nulls, and why. Everything else failing
 # the not-null check is a bug. See docs/phases/05-sql-layer.md
+#
+# The null policy, decided once (demo scenario D4): the check fails the run on
+# any null outside this set; nulls inside it are passed to XGBoost, which learns
+# a default split direction for them. No imputation anywhere.
 ALLOWED_NULL_FEATURES: frozenset[str] = frozenset(
     {
         "last_home_gate",  # a club's first ever home match has no prior gate
@@ -192,13 +280,20 @@ ALLOWED_NULL_FEATURES: frozenset[str] = frozenset(
 # Tableau extracts
 # --------------------------------------------------------------------------
 
+# What Tableau needs, not everything. raw_matches has no place in a dashboard.
 EXTRACT_TABLES: tuple[str, ...] = (
     "mart_match_features",
+    "mart_decay_curve",
     "int_standings",
+    "int_stakes",
+    "stg_clubs",
     "predictions",
     "model_metrics",
+    "model_cv",
+    "model_variance",
     "feature_importance",
     "run_log",
+    "check_log",
 )
 
 

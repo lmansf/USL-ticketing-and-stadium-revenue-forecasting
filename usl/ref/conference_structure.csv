@@ -1,0 +1,2 @@
+season,conference,playoff_spots,relegation_spots,note
+2018,Premier League,4,3,EPL 2018/19 example season. playoff_spots stands in for the Champions League line (top four) - the upside-stakes race this league actually has. relegation_spots is REAL here (bottom three go down) which makes the example season the one place points_from_relegation_line has ground truth. For USL rows leave relegation_spots blank and config.ASSUMED_RELEGATION_SPOTS applies.

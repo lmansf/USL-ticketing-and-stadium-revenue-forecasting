@@ -8,6 +8,9 @@ Resolving these is part of the work. Leaving them undocumented is the thing to a
 an interviewer probes exactly here, and "I did not notice there was a choice" is the
 only bad answer.
 
+Each question below now carries a **Resolved** note saying what was chosen; the
+reasoning behind every choice is collected in [build-decisions.md](build-decisions.md).
+
 ---
 
 ## Resolved by the project scope
@@ -83,6 +86,12 @@ Open sub-question: what happens to `rank_before` in a season where the league di
 split into conferences, if such a season exists in your range. Ranking league-wide for
 those seasons is defensible; so is excluding them. Pick one and write it down.
 
+> **Resolved in this build.** `usl/ref/club_conference.csv` is filled per `(club_id, season)` and
+> also carries `display_name`. For the example season there is one conference, the whole
+> league, so the sub-question is answered: a season with no split ranks league-wide by
+> putting every club in one conference. See
+> [build-decisions.md](build-decisions.md#phase-03---club-identity).
+
 ### Does the API carry per-match attendance for USL?
 
 **Unresolved, and now load-bearing: there is no fallback source.**
@@ -102,6 +111,11 @@ If it fails, the scraper is recoverable from git history and the script prints t
 commands. Recovering it means two sources joined on `season + date + club`, since they
 share no key.
 
+> **Half resolved.** For the example season the `league-matches` record carries `attendance`
+> populated on 380 of 380 matches (median 31,957). `scripts/check_attendance_coverage.py`
+> now serves from the archive and passes offline. **The USL half is still the gate** and
+> needs the subscription: run the script with `--season-id` on day one.
+
 ### Season ids
 
 You cannot request a year from FootyStats, only a `season_id`. The mapping lives in
@@ -112,6 +126,11 @@ looked up afterwards. Fill the file in on day one.
 
 Related: whether the current in-progress season is in the training set at all, or held
 out.
+
+> **Resolved in shape, not in content.** `seasons.csv` lists the EPL example (1625) and the
+> ten USL seasons with blank ids; the backfill skips and reports blanks. The in-progress
+> season is trained on like any other and its unplayed fixtures get forecasts; hold it out
+> by leaving it out of the file.
 
 ### League selection on the entry tier
 
@@ -137,6 +156,10 @@ per conference has changed across the nine seasons. Hardcoding one number is wro
 some seasons. Either put it in a `season, conference, playoff_spots` reference file, or
 derive it from published results, or restrict the feature to seasons where you are sure.
 
+> **Resolved.** `usl/ref/conference_structure.csv`, keyed by `(season, conference)`, with
+> `config.DEFAULT_PLAYOFF_SPOTS = None` so a missing row stops the run rather than guessing.
+> See [build-decisions.md](build-decisions.md#phase-06---features).
+
 ### The relegation line
 
 There is no relegation, so there is no line. `points_from_relegation_line` requires
@@ -148,6 +171,10 @@ unvalidated in [the honesty note](../phases/06-features.md#the-honesty-note). Pu
 assumed cutoff in `config.py` where it is visible, and state it wherever the feature
 appears.
 
+> **Resolved.** `config.ASSUMED_RELEGATION_SPOTS = 2` where `conference_structure.csv` leaves
+> `relegation_spots` blank. The EPL row has the real value, 3, so the instrument has ground
+> truth on the example season only.
+
 ### The COVID window
 
 `is_covid_affected` is a date range and the boundaries are a judgement call, not a fact.
@@ -155,12 +182,18 @@ Restrictions eased at different times in different markets, and some 2021 matche
 capacity-limited. The range lives in `config.py`; say in the README that it is a range
 you chose, and be able to show the model's error with and without the exclusion.
 
+> **Resolved.** `config.COVID_START = 2020-03-01`, `COVID_END = 2021-06-30`, reaching SQL via
+> the `ref_config` table. `DROP_COVID` defaults on. Lag features skip COVID matches.
+
 ### Derbies
 
 `usl/ref/derbies.csv` is hand-flagged, which means someone decides what counts. Two
 clubs in the same metro is easy. Two clubs three hours apart with a history is a
 judgement. Whatever rule you use, write it in the file's `note` column so the decision
 is recoverable.
+
+> **Resolved.** Rule recorded in the first row of `derbies.csv`: same city or metro area, or
+> both clubs market the fixture as a derby.
 
 ### Tie-breaking beyond goals for
 
@@ -170,6 +203,9 @@ implement that or accept the occasional `RANK()` tie is a call; accepting it is
 reasonable, provided you use `RANK()` rather than `ROW_NUMBER()` so tied clubs share a
 position instead of being ordered arbitrarily by whatever the engine felt like.
 
+> **Resolved.** `RANK()`, ties share a position, no head-to-head. Line positions for the
+> stakes features use `ROW_NUMBER()` over the same ordering so a line always exists.
+
 ### Neutral-site matches
 
 A handful of matches across nine seasons are played away from the home club's ground.
@@ -177,6 +213,9 @@ There is no flag for this in the source. They get the wrong weather in
 [phase two](../phases/12-phase-two-weather.md) and arguably the wrong attendance
 interpretation throughout. Hand-maintain a list, or state the caveat. Not stating it is
 the only wrong answer.
+
+> **Not resolved.** No list is maintained; the caveat stands as stated. The example season
+> has none.
 
 ### match_id and rebrands
 
@@ -189,6 +228,10 @@ Options: accept it and detect it with a row-count check, or re-key on canonical 
 second pass, or version the raw table. Not addressed in the guide. Decide before it
 happens rather than after.
 
+> **Resolved, and the premise changed.** `match_id` is the provider's id (`fs:` + id), which
+> does not move on a rebrand. The natural-key hash survives only as the `nk:` fallback for a
+> source with no id. See [build-decisions.md](build-decisions.md#phase-01---the-raw-table-and-match_id).
+
 ### Lag windows across season boundaries
 
 Should `home_gate_ma3` for a club's first home match of a season include matches from
@@ -197,8 +240,14 @@ different squad). Flagged in
 [phase 06](../phases/06-features.md#exercise-61---lag-features-without-leakage); not
 decided here.
 
+> **Resolved.** They cross. Partition by club only. See
+> [build-decisions.md](build-decisions.md#phase-06---features).
+
 ### Null policy
 
 XGBoost handles nulls natively; imputing and failing are both also legitimate. What is
 not legitimate is not knowing which one your pipeline does. This is demo scenario D4,
 and the demo is about explaining the choice rather than about the null being a bug.
+
+> **Resolved.** Fail the run on any null outside `config.ALLOWED_NULL_FEATURES`; pass the
+> allowed ones (the four lag features) to XGBoost unimputed. Demo D4 shows both halves.

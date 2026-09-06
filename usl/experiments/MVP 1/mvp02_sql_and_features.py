@@ -589,7 +589,7 @@ def explain_missing_raw_matches(con: duckdb.DuckDBPyConnection) -> None:
         "",
         "Two ways forward:",
         "  1. Skip the intermediate table entirely (works today):",
-        "       --from-json league-matches_season_1.json",
+        "       --from-json data/raw_archive/league-matches_season_id_1625.json",
         "  2. Carry the extra fields when you build the raw table, then --db works.",
         "",
         "  --seed-demo exercises the SQL on synthetic data with no source at all.",

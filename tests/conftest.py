@@ -6,11 +6,17 @@ verify by reading it is worth more than a realistic one you cannot.
 
 from __future__ import annotations
 
+import datetime as dt
+import json
 from collections.abc import Iterator
+from pathlib import Path
 
 import duckdb
 import pandas as pd
 import pytest
+
+from usl import config
+from usl.transform.reference import create_ref_config, register_reference_frame
 
 
 @pytest.fixture
@@ -104,3 +110,156 @@ def club_aliases() -> pd.DataFrame:
         ],
         columns=["raw_name", "club_id", "note"],
     )
+
+
+@pytest.fixture
+def tiny_structure() -> pd.DataFrame:
+    """conference_structure rows for tiny_season: two playoff spots, one relegation spot."""
+    return pd.DataFrame(
+        [(2024, "East", 2, 1, "test fixture")],
+        columns=["season", "conference", "playoff_spots", "relegation_spots", "note"],
+    )
+
+
+@pytest.fixture
+def tiny_derbies() -> pd.DataFrame:
+    """One derby pair for tiny_season: club_a against club_b, in either direction."""
+    return pd.DataFrame(
+        [("club_a", "club_b", "test fixture")],
+        columns=["club_id_a", "club_id_b", "note"],
+    )
+
+
+@pytest.fixture
+def tiny_raw(tiny_season: pd.DataFrame, club_aliases: pd.DataFrame) -> pd.DataFrame:
+    """tiny_season in the shape of raw_matches, with display names as the raw club strings.
+
+    home_raw / away_raw carry 'Club A' style names so the club_aliases fixture
+    maps them; the real pipeline carries provider ids there, which is the same
+    join. Every value is text, as the raw tier requires.
+    """
+    display = {row.club_id: row.raw_name for row in club_aliases.itertuples() if row.note == ""}
+    rows = []
+    for i, m in enumerate(tiny_season.itertuples(), start=1):
+        kickoff = dt.datetime.combine(dt.date.fromisoformat(m.date), dt.time(12, 0), tzinfo=dt.UTC)
+        record = {
+            "id": i,
+            "season": str(m.season),
+            "date_unix": int(kickoff.timestamp()),
+            "status": "complete",
+            "homeID": display[m.home_club_id],
+            "awayID": display[m.away_club_id],
+            "homeGoalCount": m.home_goals,
+            "awayGoalCount": m.away_goals,
+            "attendance": m.attendance,
+        }
+        rows.append(
+            {
+                "match_id": m.match_id,
+                "provider_id": str(i),
+                "season_id": 999,
+                "season_raw": str(m.season),
+                "date_unix": int(kickoff.timestamp()),
+                "status": "complete",
+                "game_week": str((i + 1) // 2),
+                "home_raw": display[m.home_club_id],
+                "away_raw": display[m.away_club_id],
+                "home_name": display[m.home_club_id],
+                "away_name": display[m.away_club_id],
+                "home_goals": str(m.home_goals),
+                "away_goals": str(m.away_goals),
+                "attendance": str(m.attendance),
+                "stadium_name": f"{display[m.home_club_id]} Ground",
+                "raw_json": json.dumps(record),
+                "ingested_at": dt.datetime(2024, 3, 19, 6, 0, 0),
+                "source_endpoint": "league-matches",
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def stage_frames(
+    con: duckdb.DuckDBPyConnection,
+    matches: pd.DataFrame,
+    clubs: pd.DataFrame,
+    *,
+    structure: pd.DataFrame | None = None,
+    derbies: pd.DataFrame | None = None,
+) -> None:
+    """Stand up the staging tier and reference tables straight from small frames.
+
+    Skips raw entirely, so a standings or features test can materialise
+    int_standings, int_stakes, and mart_match_features from tiny_season
+    without an alias CSV or an archive on disk.
+
+    Args:
+        con: In-memory connection.
+        matches: tiny_season-shaped rows. home_goals / away_goals may be None
+            for an unplayed fixture; attendance may be None.
+        clubs: tiny_clubs-shaped rows (club_id, season, conference, display_name).
+        structure: conference_structure rows. Defaults to two playoff spots and
+            one relegation spot for every (season, conference) in clubs.
+        derbies: derbies rows. Defaults to none.
+    """
+    create_ref_config(con)
+
+    con.register("_matches", matches)
+    con.execute(
+        """
+        CREATE OR REPLACE TABLE stg_matches AS
+        SELECT
+            CAST(match_id AS VARCHAR)                         AS match_id,
+            CAST(season AS INTEGER)                           AS season,
+            CAST(NULL AS INTEGER)                             AS season_id,
+            CAST(date AS DATE)                                AS date,
+            CAST(date AS TIMESTAMP) + INTERVAL 12 HOUR        AS kickoff_utc,
+            CASE WHEN home_goals IS NULL THEN 'incomplete' ELSE 'complete' END AS status,
+            home_goals IS NOT NULL                            AS is_played,
+            CAST(home_club_id AS VARCHAR)                     AS home_raw,
+            CAST(away_club_id AS VARCHAR)                     AS away_raw,
+            CAST(home_club_id AS VARCHAR)                     AS home_club_id,
+            CAST(away_club_id AS VARCHAR)                     AS away_club_id,
+            CAST(home_goals AS INTEGER)                       AS home_goals,
+            CAST(away_goals AS INTEGER)                       AS away_goals,
+            CAST(attendance AS INTEGER)                       AS attendance,
+            CAST(date AS DATE) BETWEEN (SELECT covid_start FROM ref_config)
+                                   AND (SELECT covid_end FROM ref_config) AS is_covid_affected,
+            dayofweek(CAST(date AS DATE))                     AS day_of_week,
+            month(CAST(date AS DATE))                         AS month,
+            dayofweek(CAST(date AS DATE)) IN (0, 6)           AS is_weekend,
+            dayofweek(CAST(date AS DATE)) IN (2, 3, 4)        AS is_midweek
+        FROM _matches
+        """
+    )
+    con.unregister("_matches")
+
+    con.register("_clubs", clubs)
+    con.execute(
+        """
+        CREATE OR REPLACE TABLE stg_clubs AS
+        SELECT CAST(club_id AS VARCHAR) AS club_id,
+               CAST(season AS INTEGER)  AS season,
+               CAST(conference AS VARCHAR) AS conference,
+               CAST(display_name AS VARCHAR) AS display_name
+        FROM _clubs
+        """
+    )
+    con.unregister("_clubs")
+
+    if structure is None:
+        structure = (
+            clubs[["season", "conference"]]
+            .drop_duplicates()
+            .assign(playoff_spots=2, relegation_spots=1, note="default test structure")
+        )
+    register_reference_frame(con, "conference_structure", structure)
+
+    if derbies is None:
+        derbies = pd.DataFrame(columns=["club_id_a", "club_id_b", "note"])
+    register_reference_frame(con, "derbies", derbies)
+
+
+@pytest.fixture
+def example_archive_path() -> Path:
+    """The committed example-key response: EPL 2018/19, season id 1625, 380 matches."""
+    return config.ARCHIVE_DIR / "league-matches_season_id_1625.json"

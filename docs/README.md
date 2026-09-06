@@ -1,7 +1,11 @@
 # The build guide
 
-This guide is a learning artifact, not a finished implementation. The modules under
-`usl/` are stubs with signatures, docstrings, and TODO markers. You write the bodies.
+This guide is a learning artifact. It was written as stubs with signatures,
+docstrings, and TODO markers under `usl/`, and it has since been worked through end
+to end against the free example season: every body is implemented, every test is
+real, and [reference/build-decisions.md](reference/build-decisions.md) records what
+was chosen wherever the guide left a choice open. The exercises still read as
+exercises - try each one before opening the solution or the implementation.
 
 **How to use it.** Each phase states its goal and its constraints, then poses an
 exercise. Try the exercise first. Worked solutions live in collapsed `<details>`
@@ -67,6 +71,8 @@ break things silently when they are wrong.
   and `.taco` file, about fifteen minutes
 - [Open questions](reference/open-questions.md) - decisions the guide leaves open, and
   where each one is resolved in this repo
+- [Build decisions](reference/build-decisions.md) - what was chosen for every one of
+  them when the guide was worked through, and why
 
 ---
 

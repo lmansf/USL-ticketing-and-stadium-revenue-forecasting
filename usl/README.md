@@ -1,23 +1,25 @@
 # usl/
 
-The package. Ships as stubs: signatures, docstrings, type hints, and TODO markers
-pointing at the doc that explains each one.
+The package. Every module is implemented and tested; the signatures, docstrings, and
+the doc each one points at are the ones the guide shipped as stubs.
 
 ```
 usl/
 +-- config.py         Seasons, paths, feature lists, tunables. Judgement calls marked
 +-- logging_setup.py  Run and check logging. A feature, not an afterthought
-+-- db.py             DuckDB connection. Contains the one unguided exercise
-+-- run.py            CLI. One command per stage, plus 'weekly'
++-- db.py             DuckDB connection. The lock guard: retry, then name the holder
++-- run.py            CLI. One command per stage, plus 'weekly' and 'league-list'
 +-- ingest/           footystats.py (API client), archive.py (durable raw store)
-+-- load/             raw.py - upsert into raw_matches
-+-- sql/              The three-tier SQL layer, one .sql per model
-+-- transform/        runner.py (materialise in order), checks.py (data quality)
++-- load/             raw.py - upsert into raw_matches with the insert/update/unchanged split
++-- sql/              The SQL layer, six .sql files, one per model
++-- transform/        runner.py (materialise in order), checks.py (nine data-quality checks),
+|                     reference.py (the CSVs and ref_config, one place)
 +-- features/         definitions.py - the feature families and their evidence class
 +-- models/           train.py, metrics.py
-+-- export/           extracts.py - Tableau CSV and Hyper
-+-- weather/          Phase two stubs, Open-Meteo
-+-- ref/              Four hand-maintained CSVs. Code, not data
++-- export/           extracts.py - Tableau CSV, Hyper via pantab if present
++-- weather/          Phase two stubs, Open-Meteo. Still stubs, deliberately
++-- ref/              Six hand-maintained CSVs. Code, not data
++-- experiments/      Scratch workspace from the first MVP pass. Not package code
 ```
 
 ## Design notes worth knowing before you start
@@ -44,5 +46,6 @@ is deliberate: the subscription runs for one month, and the archive is the only 
 of the source data afterwards. With no API key set, the pipeline runs entirely from
 it. See [phase 00](../docs/phases/00-data-access-and-the-clock.md).
 
-**`db.py::connect_for_write` has no worked solution.** It is the one unguided
-exercise. The contract is in the docstring; the strategy is yours.
+**`db.py::connect_for_write` was the one unguided exercise.** The route taken and
+the reasoning are in
+[docs/reference/build-decisions.md](../docs/reference/build-decisions.md#phase-02---the-lock).

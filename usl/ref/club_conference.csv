@@ -1,3 +1,21 @@
-club_id,season,conference,note
-tampa_bay_rowdies,2019,Eastern,EXAMPLE ROW - verify against the source per season
-ottawa_fury,2019,Eastern,EXAMPLE ROW - conference membership is not constant across seasons
+club_id,season,conference,display_name,note
+arsenal,2018,Premier League,Arsenal,EPL 2018/19 example season - one table with no conference split. The single conference IS the league.
+tottenham_hotspur,2018,Premier League,Tottenham Hotspur,EPL 2018/19 example season
+manchester_city,2018,Premier League,Manchester City,EPL 2018/19 example season
+leicester_city,2018,Premier League,Leicester City,EPL 2018/19 example season
+crystal_palace,2018,Premier League,Crystal Palace,EPL 2018/19 example season
+everton,2018,Premier League,Everton,EPL 2018/19 example season
+burnley,2018,Premier League,Burnley,EPL 2018/19 example season
+southampton,2018,Premier League,Southampton,EPL 2018/19 example season
+bournemouth,2018,Premier League,AFC Bournemouth,EPL 2018/19 example season
+manchester_united,2018,Premier League,Manchester United,EPL 2018/19 example season
+liverpool,2018,Premier League,Liverpool,EPL 2018/19 example season
+chelsea,2018,Premier League,Chelsea,EPL 2018/19 example season
+west_ham_united,2018,Premier League,West Ham United,EPL 2018/19 example season
+watford,2018,Premier League,Watford,EPL 2018/19 example season
+newcastle_united,2018,Premier League,Newcastle United,EPL 2018/19 example season
+cardiff_city,2018,Premier League,Cardiff City,EPL 2018/19 example season
+fulham,2018,Premier League,Fulham,EPL 2018/19 example season
+brighton,2018,Premier League,Brighton & Hove Albion,EPL 2018/19 example season
+huddersfield_town,2018,Premier League,Huddersfield Town,EPL 2018/19 example season
+wolverhampton_wanderers,2018,Premier League,Wolverhampton Wanderers,EPL 2018/19 example season

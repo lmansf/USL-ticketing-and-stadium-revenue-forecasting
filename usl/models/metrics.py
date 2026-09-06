@@ -32,9 +32,7 @@ class ErrorMetrics:
     n_test: int
 
 
-def compute_metrics(
-    y_true: pd.Series, y_pred: pd.Series, *, n_train: int
-) -> ErrorMetrics:
+def compute_metrics(y_true: pd.Series, y_pred: pd.Series, *, n_train: int) -> ErrorMetrics:
     """Compute holdout error metrics.
 
     Args:
