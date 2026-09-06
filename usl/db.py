@@ -156,7 +156,10 @@ def connect_for_write(
 
     Raises:
         DatabaseLockedError: When the lock was still held after every attempt.
-        duckdb.IOException: For any non-lock failure to open the file.
+        duckdb.IOException: For any non-lock failure to open the file, on the
+            first attempt and without a retry.
+        OSError: When the parent directory cannot be created, for example
+            because a regular file already sits where the directory should be.
     """
     path = Path(path)
     attempts = max_attempts if max_attempts is not None else config.LOCK_MAX_ATTEMPTS

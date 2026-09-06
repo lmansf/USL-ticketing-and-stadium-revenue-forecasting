@@ -191,6 +191,10 @@ logged.
   A-to-B gap can be read against run-to-run noise as exercise 7.2 requires.
 - The naive club-mean baseline is written as `model_name = 'naive_club_mean'`. A
   club in the holdout with no training rows falls back to the training-set mean.
+- `XGB_PARAMS` carries `subsample` and `colsample_bytree` at 0.8, not for accuracy
+  but so the seed does something: without subsampling the hist booster is fully
+  deterministic and `model_variance` reads a spread of exactly zero across every
+  seed, which would make the noise floor of exercise 7.2 a fiction.
 - Forecasts for unplayed fixtures are produced by a refit on all played rows and
   written with `actual` null.
 - The uncertainty band for the drill-down view is historical residuals, labelled as

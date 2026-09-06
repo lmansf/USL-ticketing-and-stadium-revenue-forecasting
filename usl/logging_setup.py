@@ -300,11 +300,14 @@ def finish_stage(
     if status not in ("success", "failed"):
         raise ValueError(f"status must be 'success' or 'failed', got {status!r}")
     meta = dict(metadata or {})
-    finished = utcnow()
     started = ctx.stages.get(stage, {}).get("started_at")
     if started is None:
         start_stage(con, ctx, stage)
         started = ctx.stages[stage]["started_at"]
+    # Stamp the finish only once the start is settled: the fallback above stamps
+    # its own start time, and a finish taken before it would read as a stage
+    # that ended before it began.
+    finished = utcnow()
     duration = (finished - started).total_seconds()
 
     unknown = sorted(set(meta) - set(_METADATA_COLUMNS))

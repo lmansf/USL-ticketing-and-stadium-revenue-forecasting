@@ -239,12 +239,18 @@ RANDOM_STATE: int = 42
 # is written to model_variance so the A-to-B gap can be read against noise.
 VARIANCE_SEEDS: tuple[int, ...] = (42, 7, 19, 101)
 
-# XGBoost keyword arguments. Defaults are deliberate - tuning is not where the
-# value is in this project.
+# XGBoost keyword arguments. Near-defaults are deliberate - tuning is not where
+# the value is in this project. subsample and colsample_bytree are the one
+# addition, and not for accuracy: without them the hist booster is fully
+# deterministic and every seed in VARIANCE_SEEDS produces the identical model,
+# so the run-to-run noise floor that exercise 7.2 needs would read as exactly
+# zero. Row and column subsampling is what makes the seed matter.
 XGB_PARAMS: dict[str, object] = {
     "n_estimators": 400,
     "max_depth": 6,
     "learning_rate": 0.05,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
     "random_state": RANDOM_STATE,
 }
 

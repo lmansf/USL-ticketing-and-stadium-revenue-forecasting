@@ -13,6 +13,7 @@ from __future__ import annotations
 import duckdb
 import pandas as pd
 
+from usl.config import SQL_DIR
 from usl.load.raw import RAW_COLUMNS, ensure_raw_tables
 from usl.transform import runner
 from usl.transform.checks import (
@@ -21,6 +22,7 @@ from usl.transform.checks import (
     row_count_preserved,
 )
 from usl.transform.reference import (
+    NORMALIZE_SQL,
     create_ref_config,
     normalize_club_key,
     register_reference_frame,
@@ -211,6 +213,21 @@ def test_normalization_does_not_collide_distinct_clubs(
     result = all_clubs_mapped(con)
     assert not result.passed
     assert result.metadata["unmapped"] == ["Club A United"]
+
+
+def test_staging_join_uses_the_shared_normalisation_expression() -> None:
+    """stg_matches.sql normalises the raw side with reference.NORMALIZE_SQL, verbatim.
+
+    The SQL file is static, so the expression is copied into it rather than
+    formatted in. This pins the copy to the Python constant: if the rule
+    changes on one side only, the join silently drifts from the loader that
+    normalised the CSV, and that drift is the 93 versus "93" trap in a new
+    coat. Both join keys must use it.
+    """
+    sql = (SQL_DIR / "stg_matches.sql").read_text(encoding="utf-8")
+    for col in ("p.home_raw", "p.away_raw"):
+        expression = NORMALIZE_SQL.format(col=col)
+        assert sql.count(expression) == 1, f"{expression} not used exactly once for {col}"
 
 
 def test_provider_ids_and_display_names_both_map(

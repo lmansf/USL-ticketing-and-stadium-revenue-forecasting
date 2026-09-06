@@ -336,6 +336,24 @@ def test_failed_checks_are_logged_and_later_tiers_are_not_run(
     assert "no_future_leakage" not in logged
 
 
+def test_one_row_per_match_fires_on_a_duplicated_match_id(
+    con: duckdb.DuckDBPyConnection, tiny_season: pd.DataFrame, tiny_clubs: pd.DataFrame
+) -> None:
+    """A repeated match_id in staging is named, with how many rows carry it.
+
+    The raw primary key makes this impossible from a single load, so the case
+    it guards is a staging join that fanned out or a second source keyed
+    differently. The check must fire on the duplicate and pass once it is gone.
+    """
+    stage_frames(con, tiny_season, tiny_clubs)
+    assert one_row_per_match(con).passed
+    con.execute("INSERT INTO stg_matches SELECT * FROM stg_matches WHERE match_id = 'm3'")
+    result = one_row_per_match(con)
+    assert not result.passed
+    assert result.tier == "staging"
+    assert result.metadata == {"n_duplicated": 1, "duplicates": [{"match_id": "m3", "rows": 2}]}
+
+
 def test_run_checks_logs_to_the_stream_without_a_context(
     con: duckdb.DuckDBPyConnection,
     tiny_season: pd.DataFrame,
@@ -513,3 +531,43 @@ def test_staging_types_and_calendar_columns(
     assert rows["m9"]["is_played"] is True
     # midweek: 2024-03-26 is a Tuesday
     assert (rows["m10"]["day_of_week"], rows["m10"]["is_midweek"]) == (2, True)
+
+
+def test_match_date_is_taken_in_the_configured_timezone(
+    con: duckdb.DuckDBPyConnection,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tiny_raw: pd.DataFrame,
+    club_aliases: pd.DataFrame,
+    tiny_clubs: pd.DataFrame,
+) -> None:
+    """The match DATE follows config.MATCH_TZ; the kick-off stays in UTC.
+
+    A 7:30pm Pacific Saturday kick-off is 02:30 UTC on Sunday. In UTC (the
+    default, exact for the example season) that is day_of_week 0 and a
+    weekend; in America/Los_Angeles it is Saturday, 6, still a weekend, but
+    the date - which every lag and standings join keys on - is a day earlier.
+    This is the judgement call build-decisions.md flags for USL, and the test
+    shows the one-row ref_config table is where it takes effect.
+    """
+    raw = tiny_raw.copy()
+    kickoff = dt.datetime(2024, 3, 3, 2, 30, tzinfo=dt.UTC)  # Sunday 02:30 UTC
+    raw.loc[raw["match_id"] == "m1", "date_unix"] = int(kickoff.timestamp())
+    write_reference_csvs(tmp_path, monkeypatch, aliases=club_aliases, club_rows=tiny_clubs)
+    load_raw(con, raw)
+
+    def m1() -> tuple[object, ...]:
+        runner.load_reference_tables(con)  # rebuilds ref_config from config.MATCH_TZ
+        runner.materialise(con, "stg_clubs")
+        runner.materialise(con, "stg_matches")
+        row = con.execute(
+            "SELECT date, day_of_week, is_weekend, kickoff_utc FROM stg_matches "
+            "WHERE match_id = 'm1'"
+        ).fetchone()
+        assert row is not None
+        return row
+
+    monkeypatch.setattr(config, "MATCH_TZ", "UTC")
+    assert m1() == (dt.date(2024, 3, 3), 0, True, dt.datetime(2024, 3, 3, 2, 30))
+    monkeypatch.setattr(config, "MATCH_TZ", "America/Los_Angeles")
+    assert m1() == (dt.date(2024, 3, 2), 6, True, dt.datetime(2024, 3, 3, 2, 30))

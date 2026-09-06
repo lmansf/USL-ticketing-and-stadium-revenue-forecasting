@@ -22,6 +22,15 @@
 -- which is the conservative direction for the decay curve. Once false it stays
 -- false: the reachable total never rises and the line never falls.
 --
+-- One artefact of "strictly greater" to know about: a club with no matches
+-- left reads not-live even when it holds the last qualifying place itself
+-- (pts + 0 > pts is false). On the snapshot row the day after the season that
+-- is every club except those clear of the line, and on the real season it
+-- marks the club that finished fourth as eliminated on the snapshot date.
+-- The snapshot is not a match date, so no mart row and no decay-curve point
+-- is affected, and a club whose fixtures are done has no home match left for
+-- the flag to describe. Left as is rather than special-cased.
+--
 -- Spots come from conference_structure (usl/ref/conference_structure.csv) by
 -- (season, conference), falling back to ref_config.default_playoff_spots and
 -- ref_config.assumed_relegation_spots. A season with no row and no default

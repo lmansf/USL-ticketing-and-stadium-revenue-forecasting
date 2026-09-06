@@ -101,6 +101,29 @@ def build_standings(
     runner.materialise(con, "int_standings")
 
 
+def materialise_mutated_standings(con: duckdb.DuckDBPyConnection, old: str, new: str) -> None:
+    """Rebuild int_standings from the real SQL file with one fragment replaced.
+
+    A mutation of the file that is actually run, rather than a hand-written
+    leaky table, so the test proves the check catches a mistake in THIS SQL.
+    Fails loudly if the fragment is no longer there, so a refactor of the file
+    cannot turn the mutation into a no-op that passes for the wrong reason.
+    """
+    sql = (config.SQL_DIR / "int_standings.sql").read_text(encoding="utf-8")
+    assert sql.count(old) == 1, f"expected exactly one occurrence of {old!r} in int_standings.sql"
+    con.execute("CREATE OR REPLACE TABLE int_standings AS " + sql.replace(old, new))
+
+
+def with_unplayed(frame: pd.DataFrame, match_ids: list[str]) -> pd.DataFrame:
+    """Blank the result and gate of the named fixtures, as unplayed rows."""
+    out = frame.copy()
+    unplayed = out["match_id"].isin(match_ids)
+    for col in ("home_goals", "away_goals", "attendance"):
+        out[col] = pd.array(out[col].tolist(), dtype="Int64")
+        out.loc[unplayed, col] = pd.NA
+    return out
+
+
 def standings_on(con: duckdb.DuckDBPyConnection, date: str) -> dict[str, dict[str, object]]:
     """int_standings rows for one date, keyed by club_id."""
     rows = con.execute(
@@ -289,11 +312,22 @@ def test_no_row_uses_a_result_on_or_after_its_own_date(
 ) -> None:
     """The general form of the leakage test, and proof that the check can fire.
 
-    checks.no_future_leakage recomputes pts_before independently from matches
-    strictly before each row's date. It passes on the real SQL; it must FAIL
-    when int_standings is replaced by the classic mistake - the running total
-    with a frame ending at CURRENT ROW, which folds each match's own result
-    into the row that is supposed to predict it.
+    checks.no_future_leakage recomputes played, points, goal difference and
+    goals for independently from matches strictly before each row's date. It
+    passes on the real SQL; it must FAIL on each of the classic mistakes:
+
+    1. the running total with a frame ending at CURRENT ROW, hand-written
+       below, which folds each match's own result into the row that is
+       supposed to predict it;
+    2. the real int_standings.sql with its ASOF join made non-strict
+       (grid.date >= running.date, the form the phase 04 sketch uses), which
+       with running totals that include the current match leaks on every
+       match date - twelve of the sixteen rows, every one except the four on
+       the opening day where there is nothing yet to leak;
+    3. the real file with goals for and against swapped on the home side,
+       which leaves points and played intact and is visible only in the goal
+       columns - the tie-breakers the check would miss if it compared points
+       alone.
     """
     build_standings(con, tiny_season, tiny_clubs)
     good = no_future_leakage(con)
@@ -302,7 +336,30 @@ def test_no_row_uses_a_result_on_or_after_its_own_date(
     assert good.metadata["rows_checked"] == 16  # 4 clubs x (3 match dates + 1 snapshot)
     assert good.metadata["mismatches"] == []
 
-    # Now the leaky version: the same shape, computed INCLUDING the current match.
+    # 2. the non-strict ASOF join on the real file
+    materialise_mutated_standings(con, "AND g.date > r.date", "AND g.date >= r.date")
+    non_strict = no_future_leakage(con)
+    assert not non_strict.passed
+    assert non_strict.metadata["rows_checked"] == 16
+    assert non_strict.metadata["n_mismatches"] == 12
+    assert {m["date"] for m in non_strict.metadata["mismatches"]} >= {"2024-03-02", "2024-03-09"}
+    opener = next(m for m in non_strict.metadata["mismatches"] if m["club_id"] == "club_a")
+    assert (opener["date"], opener["pts_before"], opener["pts_expected"]) == ("2024-03-02", 3, 0)
+
+    # 3. gf and ga swapped on the real file: points and played still agree
+    materialise_mutated_standings(
+        con,
+        "        home_goals   AS gf,\n        away_goals   AS ga\n",
+        "        away_goals   AS gf,\n        home_goals   AS ga\n",
+    )
+    swapped = no_future_leakage(con)
+    assert not swapped.passed
+    first_swapped = swapped.metadata["mismatches"][0]
+    assert first_swapped["pts_before"] == first_swapped["pts_expected"]
+    assert first_swapped["played_before"] == first_swapped["played_expected"]
+    assert first_swapped["gf_before"] != first_swapped["gf_expected"]
+
+    # 1. the hand-written leaky version: the same shape, computed INCLUDING the current match.
     con.execute(
         """
         CREATE OR REPLACE TABLE int_standings AS
@@ -348,6 +405,20 @@ def test_no_row_uses_a_result_on_or_after_its_own_date(
     first = leaky.metadata["mismatches"][0]
     assert first["played_before"] == first["played_expected"] + 1
     assert isinstance(first["date"], str)  # JSON-serialisable for check_log
+    assert set(first) == {
+        "season",
+        "conference",
+        "club_id",
+        "date",
+        "played_before",
+        "played_expected",
+        "pts_before",
+        "pts_expected",
+        "gd_before",
+        "gd_expected",
+        "gf_before",
+        "gf_expected",
+    }
 
 
 def test_final_standings_match_hand_computed_table(
@@ -498,6 +569,115 @@ def test_clubs_not_playing_on_a_date_still_have_a_row(
     assert (saturday["club_c"]["pts_before"], saturday["club_c"]["played_before"]) == (4, 2)
     assert saturday["club_c"]["rank_before"] == 1
     assert saturday["club_a"]["rank_before"] == 2
+
+
+def test_unplayed_fixture_date_is_a_grid_date_with_carried_forward_totals(
+    con: duckdb.DuckDBPyConnection, tiny_season: pd.DataFrame, tiny_clubs: pd.DataFrame
+) -> None:
+    """A postponed fixture still puts its date on the grid, and adds nothing to the table.
+
+    tiny_season with m3 (club_b v club_c, 03-09) unplayed. 03-09 is still a
+    grid date for all four clubs and is a match date for all four - club_b and
+    club_c have a fixture that day even though it has no result - with the
+    round-one totals carried forward. On 03-16 club_b and club_c have played
+    one match to club_a's and club_d's two. Nothing in the fixture list is
+    dropped or invented: the snapshot the day after the last round shows
+    club_a 7 (3 played), club_b 3 (2), club_c 2 (2), club_d 1 (3).
+    """
+    build_standings(con, with_unplayed(tiny_season, ["m3"]), tiny_clubs)
+    postponed = standings_on(con, "2024-03-09")
+    assert {c: r["is_match_date"] for c, r in postponed.items()} == {
+        "club_a": True,
+        "club_b": True,
+        "club_c": True,
+        "club_d": True,
+    }
+    assert {c: r["pts_before"] for c, r in postponed.items()} == {
+        "club_a": 3,
+        "club_b": 0,
+        "club_c": 1,
+        "club_d": 1,
+    }
+    third_round = standings_on(con, "2024-03-16")
+    assert {c: r["played_before"] for c, r in third_round.items()} == {
+        "club_a": 2,
+        "club_b": 1,
+        "club_c": 1,
+        "club_d": 2,
+    }
+    assert final_table(con, 2024, "East") == [
+        ("club_a", 3, 7, 4, 6, 1),
+        ("club_b", 2, 3, -1, 2, 2),
+        ("club_c", 2, 2, 0, 2, 3),
+        ("club_d", 3, 1, -3, 3, 4),
+    ]
+    assert no_future_leakage(con).passed
+
+
+def test_snapshot_follows_the_last_fixture_even_when_it_is_unplayed(
+    con: duckdb.DuckDBPyConnection, tiny_season: pd.DataFrame, tiny_clubs: pd.DataFrame
+) -> None:
+    """A season in progress: the snapshot sits after the last SCHEDULED date.
+
+    With the third round still to play, the last grid date is 03-16 (a match
+    date, both fixtures unplayed) and the snapshot is 03-17. Both carry the
+    table as it stands after two rounds - club_a 6, club_c 2, club_d 1,
+    club_b 1 - so the current table exists as a row either way.
+    """
+    build_standings(con, with_unplayed(tiny_season, ["m5", "m6"]), tiny_clubs)
+    dates = [
+        r[0] for r in con.execute("SELECT DISTINCT date FROM int_standings ORDER BY 1").fetchall()
+    ]
+    assert dates == [dt.date(2024, 3, d) for d in (2, 9, 16, 17)]
+    last_round = standings_on(con, "2024-03-16")
+    assert all(r["is_match_date"] for r in last_round.values())
+    assert final_table(con, 2024, "East") == [
+        ("club_a", 2, 6, 4, 5, 1),
+        ("club_c", 2, 2, 0, 1, 2),
+        ("club_d", 2, 1, -2, 2, 3),
+        ("club_b", 2, 1, -2, 0, 4),
+    ]
+    assert {c: r["pts_before"] for c, r in last_round.items()} == {
+        "club_a": 6,
+        "club_b": 1,
+        "club_c": 2,
+        "club_d": 1,
+    }
+
+
+def test_standings_start_from_zero_each_season(con: duckdb.DuckDBPyConnection) -> None:
+    """The window and the ASOF join are both bounded by season.
+
+    Two seasons of the same two clubs. club_a ends 2023 on 4 points and opens
+    2024 on 0; without the season bound on the ASOF join the 2024 opener would
+    inherit the 2023 table. Each season gets its own snapshot.
+    """
+    season = matches(
+        [
+            ("s1", 2023, "2023-03-04", "club_a", "club_b", 1, 0, 4800),
+            ("s2", 2023, "2023-03-11", "club_b", "club_a", 0, 0, 3900),
+            ("s3", 2024, "2024-03-02", "club_a", "club_b", 0, 0, 5000),
+            ("s4", 2024, "2024-03-09", "club_b", "club_a", 1, 0, 4000),
+        ]
+    )
+    club_rows = clubs(
+        [
+            ("club_a", 2023, "East", "Club A"),
+            ("club_b", 2023, "East", "Club B"),
+            ("club_a", 2024, "East", "Club A"),
+            ("club_b", 2024, "East", "Club B"),
+        ]
+    )
+    build_standings(con, season, club_rows)
+    opener = standings_on(con, "2024-03-02")
+    assert {c: (r["played_before"], r["pts_before"]) for c, r in opener.items()} == {
+        "club_a": (0, 0),
+        "club_b": (0, 0),
+    }
+    assert final_table(con, 2023, "East") == [("club_a", 2, 4, 1, 1, 1), ("club_b", 2, 1, -1, 0, 2)]
+    assert final_table(con, 2024, "East") == [("club_b", 2, 4, 1, 1, 1), ("club_a", 2, 1, -1, 0, 2)]
+    assert no_future_leakage(con).passed
+    assert no_future_leakage(con).metadata["rows_checked"] == 12  # 2 clubs x 2 seasons x 3
 
 
 def test_club_season_missing_from_stg_clubs_is_named_by_the_check(
@@ -652,3 +832,38 @@ def test_example_season_features_and_decay_curve(
         "SELECT count(*) FROM mart_match_features WHERE is_played AND attendance IS NOT NULL"
     ).fetchone()
     assert played == (380,)
+    openers = con.execute(
+        """
+        SELECT count(*) FILTER (WHERE is_season_opener),
+               count(*) FILTER (WHERE is_final_home_match)
+        FROM mart_match_features
+        """
+    ).fetchone()
+    assert openers == (20, 20)
+
+    # matches_since_elimination by its literal definition - the count of the
+    # club's earlier home fixtures in the season on or after eliminated_on,
+    # -1 while live - recomputed with a correlated subquery rather than the
+    # mart's window, and compared row for row.
+    mismatched = con.execute(
+        """
+        SELECT m.match_id, m.matches_since_elimination, expected
+        FROM (
+            SELECT m.match_id, m.matches_since_elimination,
+                   CASE WHEN k.eliminated_on IS NULL OR m.date < k.eliminated_on THEN -1
+                        ELSE (SELECT count(*) FROM stg_matches e
+                              WHERE e.home_club_id = m.home_club_id AND e.season = m.season
+                                AND e.date < m.date AND e.date >= k.eliminated_on)
+                   END AS expected
+            FROM mart_match_features m
+            JOIN int_stakes k
+              ON k.club_id = m.home_club_id AND k.season = m.season AND k.date = m.date
+        ) m
+        WHERE matches_since_elimination IS DISTINCT FROM expected
+        """
+    ).fetchall()
+    assert mismatched == []
+    eliminated_rows = con.execute(
+        "SELECT count(*) FROM mart_match_features WHERE matches_since_elimination >= 0"
+    ).fetchone()
+    assert eliminated_rows is not None and eliminated_rows[0] > 0

@@ -322,6 +322,30 @@ def test_features_not_null_fails_on_a_null_outside_the_allowed_set(
     assert result.tier == "mart"
 
 
+def test_mart_matches_staging_fires_on_a_dropped_or_duplicated_row(
+    con: duckdb.DuckDBPyConnection, tiny_season: pd.DataFrame, tiny_clubs: pd.DataFrame
+) -> None:
+    """Fewer mart rows means a join dropped matches; more means one fanned out.
+
+    Unplayed fixtures are in the mart by design, so the mart carries every
+    staging match, one row each, and the count is the whole contract.
+    """
+    build_mart(con, tiny_season, tiny_clubs)
+    assert mart_matches_staging(con).passed
+    con.execute("DELETE FROM mart_match_features WHERE match_id = 'm3'")
+    dropped = mart_matches_staging(con)
+    assert not dropped.passed
+    assert dropped.tier == "mart"
+    assert dropped.metadata == {"mart_rows": 5, "staging_rows": 6, "difference": -1}
+    runner.materialise(con, "mart_match_features")
+    con.execute(
+        "INSERT INTO mart_match_features SELECT * FROM mart_match_features WHERE match_id = 'm3'"
+    )
+    fanned = mart_matches_staging(con)
+    assert not fanned.passed
+    assert fanned.metadata == {"mart_rows": 7, "staging_rows": 6, "difference": 1}
+
+
 def test_lags_cross_seasons_and_same_fixture_last_season(
     con: duckdb.DuckDBPyConnection,
 ) -> None:

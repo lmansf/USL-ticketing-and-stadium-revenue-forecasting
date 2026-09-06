@@ -60,13 +60,15 @@ _CLUB_MATCH_POINTS_SQL = """
     SELECT season, date, home_club_id AS club_id,
            CASE WHEN home_goals > away_goals THEN 3
                 WHEN home_goals = away_goals THEN 1 ELSE 0 END AS points,
-           home_goals - away_goals AS gd
+           home_goals - away_goals AS gd,
+           home_goals AS gf
     FROM stg_matches WHERE is_played
     UNION ALL
     SELECT season, date, away_club_id,
            CASE WHEN away_goals > home_goals THEN 3
                 WHEN away_goals = home_goals THEN 1 ELSE 0 END,
-           away_goals - home_goals
+           away_goals - home_goals,
+           away_goals
     FROM stg_matches WHERE is_played
 """
 
@@ -309,10 +311,12 @@ def no_future_leakage(con: duckdb.DuckDBPyConnection) -> CheckResult:
     time correctness does not announce itself when it breaks - it shows up as
     suspiciously good validation error, which is easy to mistake for success.
 
-    Recomputes played_before, pts_before and gd_before for EVERY int_standings
-    row by a different method - a non-equi join summing the club's played
-    matches in that season with a match date strictly before the row date - and
-    compares. Any disagreement is a leak or a lost match.
+    Recomputes played_before, pts_before, gd_before and gf_before for EVERY
+    int_standings row by a different method - a non-equi join summing the
+    club's played matches in that season with a match date strictly before the
+    row date - and compares. Any disagreement is a leak or a lost match. All
+    four columns, because rank_before is built from all of them and a wrong
+    gf_before only moves clubs that are tied on the other two.
 
     Args:
         con: Open connection.
@@ -326,10 +330,11 @@ def no_future_leakage(con: duckdb.DuckDBPyConnection) -> CheckResult:
         WITH club_matches AS ({_CLUB_MATCH_POINTS_SQL}),
         recomputed AS (
             SELECT s.season, s.conference, s.club_id, s.date,
-                   s.played_before, s.pts_before, s.gd_before,
-                   COUNT(cm.points)          AS played_expected,
+                   s.played_before, s.pts_before, s.gd_before, s.gf_before,
+                   COUNT(cm.points)            AS played_expected,
                    COALESCE(SUM(cm.points), 0) AS pts_expected,
-                   COALESCE(SUM(cm.gd), 0)     AS gd_expected
+                   COALESCE(SUM(cm.gd), 0)     AS gd_expected,
+                   COALESCE(SUM(cm.gf), 0)     AS gf_expected
             FROM int_standings s
             LEFT JOIN club_matches cm
               ON cm.club_id = s.club_id
@@ -340,11 +345,13 @@ def no_future_leakage(con: duckdb.DuckDBPyConnection) -> CheckResult:
         SELECT season, conference, club_id, date,
                played_before, played_expected,
                pts_before, pts_expected,
-               gd_before, gd_expected
+               gd_before, gd_expected,
+               gf_before, gf_expected
         FROM recomputed
         WHERE played_before IS DISTINCT FROM played_expected
            OR pts_before IS DISTINCT FROM pts_expected
            OR gd_before IS DISTINCT FROM gd_expected
+           OR gf_before IS DISTINCT FROM gf_expected
         ORDER BY season, date, conference, club_id
         """
     ).fetchall()
@@ -360,6 +367,8 @@ def no_future_leakage(con: duckdb.DuckDBPyConnection) -> CheckResult:
             "pts_expected": int(r[7]),
             "gd_before": r[8],
             "gd_expected": int(r[9]),
+            "gf_before": r[10],
+            "gf_expected": int(r[11]),
         }
         for r in rows[:_LIST_LIMIT]
     ]
