@@ -32,6 +32,12 @@ DEFAULT_URL = "http://127.0.0.1:3000"
 # A healthy dagster-webserver ships several hundred files under webapp/build;
 # a build this small is a broken or partial install.
 MIN_BUILD_FILES = 100
+# The longest path inside the build, relative to it (a source map under
+# _next/static/chunks/). Windows refuses paths over 259 characters unless long
+# paths are enabled, and pip stops installing at the first file it cannot write,
+# which leaves exactly the partial build this script finds.
+LONGEST_RELATIVE_PATH = 86
+WINDOWS_PATH_LIMIT = 259
 TIMEOUT = 20
 
 
@@ -70,12 +76,29 @@ def check_installed_build(problems: list[str]) -> None:
     build = os.path.join(os.path.dirname(dagster_webserver.__file__), "webapp", "build")
     count = sum(len(files) for _, _, files in os.walk(build))
     print(f"webapp build: {build} ({count} files)")
-    if count < MIN_BUILD_FILES:
+    if count >= MIN_BUILD_FILES:
+        return
+    longest = len(build) + 1 + LONGEST_RELATIVE_PATH
+    if os.name == "nt" and longest > WINDOWS_PATH_LIMIT:
         problems.append(
             f"the installed webapp build has {count} files where a healthy install has several "
-            "hundred, so the page's scripts cannot be served; reinstall it: "
-            "pip install --force-reinstall --no-cache-dir dagster-webserver==<dagster version>"
+            f"hundred. The build's longest file path here is {longest} characters and Windows "
+            f"stops at {WINDOWS_PATH_LIMIT} unless long paths are enabled, so pip could not "
+            "write the rest of the package. Either enable long paths once, in an "
+            "Administrator PowerShell:\n"
+            '      New-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\FileSystem" '
+            "-Name LongPathsEnabled -Value 1 -PropertyType DWORD -Force\n"
+            "    or move the project and its venv to a short path such as C:\\usl. Then, in "
+            "a new terminal with the venv active:\n"
+            "      pip install --force-reinstall --no-cache-dir "
+            "dagster-webserver==<dagster version>"
         )
+        return
+    problems.append(
+        f"the installed webapp build has {count} files where a healthy install has several "
+        "hundred, so the page's scripts cannot be served; reinstall it: "
+        "pip install --force-reinstall --no-cache-dir dagster-webserver==<dagster version>"
+    )
 
 
 def check_page_and_scripts(session: requests.Session, base: str, problems: list[str]) -> None:

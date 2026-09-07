@@ -83,6 +83,9 @@ what the browser would - the versions, the page, every script it names, one
 GraphQL query - with a plain HTTP client, and prints one line per part. Exit 0
 means the fault is inside the browser and the console (F12) is the next place to
 look; 1 names the failing part and what to do about it; 2 means nothing answered.
+The failure it has met in practice is a partial install: on Windows a venv under
+long folder names pushes the build's longest file path past 259 characters, pip
+stops there, and the verdict says so with the long-path fix.
 
 ## Exit codes
 
