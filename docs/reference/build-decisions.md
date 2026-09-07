@@ -481,6 +481,17 @@ D3 edits `club_aliases.csv` in place and restores it byte for byte.
   ten by gain in either model, and the holdout MAE moved by four attendees in
   each direction. Rain on a match day is a real effect; it is a small one next to
   who is playing and what they drew last time.
+- **2026, the season in progress, is in.** The provider's table carries no
+  conference groups for a season under way, so the 2026 lists were derived from
+  the fixture list the way `conference_membership_is_plausible` reads it: every
+  club plays 24 or 25 of its 30 inside one group, which gives 13 East and 12 West
+  with Lexington SC in the West as in 2025. Brooklyn FC and Sporting Club
+  Jacksonville are new; North Carolina FC left. Eight playoff spots a side are
+  assumed until the playoff rounds appear in the provider's table. Four fixtures
+  are `suspended` on future dates with no gate and read as unplayed. The run
+  wrote its first forecasts on this season: 94 fixtures, both models, `actual`
+  null, and the drill-down band around each. Its 2026 totals match the
+  provider's table to the day the season was pulled.
 - **The current season is a deployment setting.** `USL_CURRENT_SEASON` in `.env`
   on the machine that runs the Tuesday job, not a committed constant: it is a fact
   about where the pipeline runs, and committing it would make every clone's

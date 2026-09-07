@@ -8,4 +8,4 @@ season,season_id,note
 2023,8845,USL Championship 2023 - 24 clubs
 2024,17351,USL Championship 2024 - 24 clubs
 2025,13967,USL Championship 2025 - 24 clubs
-2026,,USL Championship 2026 is season_id 16540 - the season in progress. Left blank until club_conference.csv and conference_structure.csv carry the 2026 rows: a season with no conference rows stops the transform by design. Then fill it in and set USL_CURRENT_SEASON=2026 in .env
+2026,16540,USL Championship 2026 - the season in progress; 25 clubs after North Carolina FC left and Brooklyn FC and Sporting Club Jacksonville joined. Set USL_CURRENT_SEASON=2026 in .env on the machine that runs the weekly job

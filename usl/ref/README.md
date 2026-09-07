@@ -65,11 +65,12 @@ than ground truth:
 A conference-season with no fixture at all is reported by the checks and not
 failed, so the USL rows do not break the example-season run.
 
-`seasons.csv` carries the USL Championship season ids for 2017 to 2025, pulled
-from `league-list` on the first day of the subscription. 2026 (season id 16540)
-is left blank until its conference rows exist, because a season with no
-conference rows stops the transform by design; the backfill skips a blank row
-and names it. FootyStats also has 2013 to 2016 (ids 4288, 4283, 4279, 1292),
+`seasons.csv` carries the USL Championship season ids for 2017 to 2026, pulled
+from `league-list` on the first day of the subscription. 2026 is the season in
+progress; its conference rows were derived from the fixture list, since the
+provider's table carries no groups for a season under way, and it is 25 clubs
+after North Carolina FC left and Brooklyn FC and Sporting Club Jacksonville
+joined. FootyStats also has 2013 to 2016 (ids 4288, 4283, 4279, 1292),
 out of scope until someone writes their conference rows. The EPL example season
 lives in `seasons.example.csv`; `USL_SEASONS_CSV` points the pipeline at it, and
 the tests and demos do exactly that, so one database holds one league.

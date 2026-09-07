@@ -20,3 +20,5 @@ season,conference,playoff_spots,relegation_spots,note
 2024,Western,8,,USL Championship 2024: eight per conference qualified. relegation_spots blank: no relegation in USL; config.ASSUMED_RELEGATION_SPOTS applies
 2025,Eastern,8,,USL Championship 2025: eight per conference qualified. relegation_spots blank: no relegation in USL; config.ASSUMED_RELEGATION_SPOTS applies
 2025,Western,8,,USL Championship 2025: eight per conference qualified. relegation_spots blank: no relegation in USL; config.ASSUMED_RELEGATION_SPOTS applies
+2026,Eastern,8,,USL Championship 2026: eight per conference assumed as in 2023-2025; the provider's table shows the regular season only so far - confirm when the playoff rounds appear. relegation_spots blank: no relegation in USL; config.ASSUMED_RELEGATION_SPOTS applies
+2026,Western,8,,USL Championship 2026: eight per conference assumed as in 2023-2025; the provider's table shows the regular season only so far - confirm when the playoff rounds appear. relegation_spots blank: no relegation in USL; config.ASSUMED_RELEGATION_SPOTS applies

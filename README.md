@@ -26,8 +26,8 @@ so that run needs no network either (see [phase two](#phase-two-built)).
 
 It was built and proven on the one season the free FootyStats `example` key serves,
 English Premier League 2018/19, exactly as the guide prescribes: prove the whole
-thing before paying for a single request. It now runs on **nine seasons of USL
-Championship, 2017 to 2025**, 4,203 matches pulled during the subscription month
+thing before paying for a single request. It now runs on **ten seasons of USL
+Championship, 2017 to 2026**, 4,578 matches pulled during the subscription month
 and committed under `data/raw_archive/`, so the USL run needs no key either. The
 numbers below are USL numbers. The example season is still one command away
 (`USL_SEASONS_CSV=usl/ref/seasons.example.csv`), and the tests and demos run on it.
@@ -441,14 +441,17 @@ licence, and a machine that stays on.
 **The subscription month, what is done and what is left.** The nine USL seasons
 are pulled, archived and committed; every club id is mapped; the conference lists
 are verified against the provider's tables; the standings match the published
-ones club for club; the weather for every USL ground is archived; the transform,
-the training and the export run on them with no key. Left, in order of value:
+ones club for club, 2026 to date included; the weather for every USL ground is
+archived through 2025; the transform, the training and the export run on them
+with no key. Left, in order of value:
 
-1. **The 2026 season.** Its id (16540) is in the note of `usl/ref/seasons.csv`.
-   Write the 2026 rows of `club_conference.csv`, `conference_structure.csv` and
-   `stadiums.csv` for any new ground, fill the id in, pull it with
-   `make backfill`, and set `USL_CURRENT_SEASON=2026` in `.env` so the weekly
-   ingest refreshes it and the freshness check applies.
+1. **The 2026 season is loaded and waiting for its weather.** The season in
+   progress is in the archive and the database: 25 clubs, 281 played, 94 still
+   to play, and the run writes forecasts for those. Two things need a connected
+   machine: `make weather` once more, for the 2026 observations and the
+   forecasts for the coming fixtures, and `USL_CURRENT_SEASON=2026` in `.env`,
+   after which the weekly ingest re-pulls the season as a dated snapshot and
+   the freshness check applies.
 2. **A second attendance source for 2021 to 2023.** The provider carries no gate
    for those seasons. The pipeline trains on what has one, and the hole is
    documented in the results; a second source joined on season, date and club

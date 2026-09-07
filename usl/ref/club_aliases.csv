@@ -175,3 +175,8 @@ Miami FC II,miami_fc,FootyStats display name (home_name) for Miami FC - the USL 
 711352,monterey_bay,FootyStats club id - proposed by scripts/propose_aliases.py from league-matches_season_id_13967.json league-matches_season_id_17351.json league-matches_season_id_6970.json league-matches_season_id_8845.json (name Monterey Bay)
 949783,lexington_sc,FootyStats club id - proposed by scripts/propose_aliases.py from league-matches_season_id_13967.json (name Lexington)
 1071426,rhode_island_fc,FootyStats club id - proposed by scripts/propose_aliases.py from league-matches_season_id_13967.json league-matches_season_id_17351.json (name Rhode Island)
+Brooklyn FC,brooklyn_fc,display name; USL Championship 2026 on
+Sporting JAX,sporting_jax,FootyStats display name (home_name) for Sporting Club Jacksonville
+Sporting Club Jacksonville,sporting_jax,display name; USL Championship 2026 on
+1431482,sporting_jax,FootyStats club id - proposed by scripts/propose_aliases.py from league-matches_season_id_16540.json (name Sporting JAX)
+1667260,brooklyn_fc,FootyStats club id - proposed by scripts/propose_aliases.py from league-matches_season_id_16540.json (name Brooklyn FC)

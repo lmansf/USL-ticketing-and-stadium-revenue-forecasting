@@ -46,6 +46,8 @@ USL_CONFERENCE_SIZES: dict[tuple[int, str], int] = {
     (2024, "Western"): 12,
     (2025, "Eastern"): 12,
     (2025, "Western"): 12,
+    (2026, "Eastern"): 13,
+    (2026, "Western"): 12,
 }
 
 
@@ -108,6 +110,7 @@ def test_usl_conference_seasons_have_the_published_sizes(ref: duckdb.DuckDBPyCon
         2023: 24,
         2024: 24,
         2025: 24,
+        2026: 25,
     }
     by_season: dict[int, int] = {}
     for (season, _), n in got.items():
