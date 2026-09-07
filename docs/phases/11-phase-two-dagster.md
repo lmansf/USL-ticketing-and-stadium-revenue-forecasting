@@ -201,6 +201,23 @@ again with more ways to hit it.
 `config.SCHEDULE_TZ`. Turning it on in the UI is the moment to delete the
 scheduled task; running both is two writers on one file.
 
+**Running it for real, once.** `make dagster` without more is a development
+server: it keeps its run history in a temporary folder that is deleted when it
+exits, and the schedule fires only while it runs. For the live run, once:
+
+```
+setx DAGSTER_HOME C:\Users\you\dagster_home     # a folder that stays; open a new terminal afterwards
+```
+
+then, in `.env`, `USL_CURRENT_SEASON=2026`, and `make dagster` from the
+project folder. In the UI, Materialize all once, so the season in progress is
+pulled as today's snapshot and the weather topped up, then turn `weekly_tuesday`
+on under Automation. The daemon inside `dagster dev` fires it every Tuesday at
+06:00 Central while the terminal is open; a run it missed because the machine
+was off is not made up, so the weekly command (`python make.py weekly`) is the
+manual catch-up. `dagster-daemon run` and `dagster-webserver` are the same two
+halves as separate services when the machine is a server.
+
 **What is deliberately not there.** No partitions (the data is one table per
 model, rebuilt whole), no IO managers (DuckDB is the store), no sensors. The
 guide's layout put staging and marts in separate files; they are one file here

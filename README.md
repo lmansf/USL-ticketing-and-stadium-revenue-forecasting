@@ -481,8 +481,10 @@ trial only for the live connection and the video.
 **The scheduler.** Either register `scripts/run_weekly.ps1` in Task Scheduler (or
 the `.sh` in cron) per [docs/mvp/05-mvp-schedule.md](docs/mvp/05-mvp-schedule.md),
 or run `make dagster` and turn on the `weekly_tuesday` schedule - one or the
-other, never both, since they write the same file. Set `config.CURRENT_SEASON` so
-the freshness check has something to be fresh about.
+other, never both, since they write the same file. For Dagster, set `DAGSTER_HOME`
+to a directory that stays, or the run history is gone when the UI closes, and keep
+`dagster dev` running: the schedule fires from it. Set `USL_CURRENT_SEASON=2026`
+in `.env` so the freshness check has something to be fresh about.
 
 ---
 
