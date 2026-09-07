@@ -396,10 +396,31 @@ D3 edits `club_aliases.csv` in place and restores it byte for byte.
   ground for that date; the caveat is stated in phase 12. The list goes beside
   `derbies.csv` if it is ever needed.
 
+## The subscription month
+
+- **Seasons in scope: USL Championship 2017 to 2025**, ids from `league-list` on
+  day one and recorded in `usl/ref/seasons.csv`. 2026 is the season in progress;
+  its id is in the file's note and it is added once its conference rows exist,
+  then `USL_CURRENT_SEASON=2026` makes the weekly ingest pull it as a dated
+  snapshot. 2013 to 2016 exist at FootyStats and are out of scope until someone
+  writes their conference rows.
+- **The example season moved to `seasons.example.csv`.** One database holds one
+  league, so the EPL row left `seasons.csv`; `USL_SEASONS_CSV` points the pipeline
+  at the example file, and the tests and demos set it, along with no key and no
+  current season, so a paid key in a developer's `.env` can never reach the
+  network from a test.
+- **Match date in US Central.** One zone for the league rather than a per-club
+  column: a 7:30pm Pacific kick-off is 9:30pm Central and still the same day, a
+  7pm Eastern one is 6pm Central, and only a Pacific kick-off at or after 10pm
+  would cross midnight, which the league does not schedule. Exact for the example
+  season as well, whose latest kick-off is 20:00 UTC. The per-club column stays
+  an option if a neutral-site match ever needs it.
+- **The current season is a deployment setting.** `USL_CURRENT_SEASON` in `.env`
+  on the machine that runs the Tuesday job, not a committed constant: it is a fact
+  about where the pipeline runs, and committing it would make every clone's
+  freshness check fail in season.
+
 ## Not decided here
 
 - Head-to-head tie-breaking.
-- A per-club timezone for the match date.
-- Which USL seasons are in scope, and whether the in-progress season is held out.
-  These need the subscription and are listed in the README under "what you have to
-  do by hand".
+- Whether the in-progress season is held out of training once it is loaded.

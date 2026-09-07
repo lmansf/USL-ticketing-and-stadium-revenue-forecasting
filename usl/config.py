@@ -75,15 +75,24 @@ LOCK_BACKOFF_BASE_SECONDS: float = 2.0  # 2, 4, 8, 16 - about 30 seconds in tota
 # file doubles as the "what have I not pulled yet" list while the clock runs.
 # You cannot rebuild that mapping after access lapses.
 # See docs/reference/open-questions.md#season-ids
-SEASONS_CSV: Path = REF_DIR / "seasons.csv"
+# The seasons the backfill pulls. seasons.csv is the USL Championship; the EPL
+# example season the pipeline was built against lives in seasons.example.csv,
+# and USL_SEASONS_CSV points the pipeline at it (tests and demos do this) so one
+# database holds one league.
+SEASONS_CSV: Path = Path(os.environ.get("USL_SEASONS_CSV") or REF_DIR / "seasons.csv")
 
 # The season currently in progress, or None when the data is archive-only.
 #
 # None is what makes the freshness check pass on an archived season: with no
 # current season configured there is nothing that could be fresh, and the check
-# records that reason instead of failing every run for ever. Set this when a
-# live season is being ingested weekly.
-CURRENT_SEASON: int | None = None
+# records that reason instead of failing every run for ever. Set
+# USL_CURRENT_SEASON in .env on the machine that runs the weekly ingest; it is
+# a deployment setting, not a fact about the data, so it is not committed.
+CURRENT_SEASON: int | None = (
+    int(os.environ["USL_CURRENT_SEASON"])
+    if os.environ.get("USL_CURRENT_SEASON", "").strip()
+    else None
+)
 
 # Approximate season boundaries, used by the freshness check to avoid firing
 # every week of the off-season. Month/day only - applied to the current year.
@@ -92,12 +101,15 @@ SEASON_START_MD: tuple[int, int] = (3, 1)
 SEASON_END_MD: tuple[int, int] = (11, 15)
 
 # The API returns kick-off as unix seconds (UTC). The match DATE - which drives
-# day_of_week and is_weekend - is taken in this zone. UTC is exact for the
-# example season (England never crosses midnight UTC on a kick-off). For USL it
-# is a JUDGEMENT CALL: a 7:30pm Pacific kick-off is already Sunday in UTC. Set
-# a US zone here before pointing the pipeline at USL data, or extend
-# stadiums.csv with a per-club zone. See docs/reference/build-decisions.md.
-MATCH_TZ: str = "UTC"
+# day_of_week, is_weekend and the standings grid - is taken in this zone. For
+# USL it is a JUDGEMENT CALL, resolved as US Central: a 7:30pm Pacific kick-off
+# is 9:30pm Central and still Saturday, a 7pm Eastern one is 6pm Central, and
+# only a Pacific kick-off at or after 10pm crosses midnight, which the league
+# does not schedule. One zone rather than a per-club column, because the date
+# is right for every real kick-off and a column is one more thing to maintain.
+# Exact for the example season too: no EPL kick-off is later than 20:00 UTC.
+# See docs/reference/build-decisions.md.
+MATCH_TZ: str = "America/Chicago"
 
 
 @dataclass(frozen=True)

@@ -1,0 +1,2 @@
+season,season_id,note
+2018,1625,EPL 2018/19 served by the free example key. NOT a USL season - it is the season the whole pipeline was built and tested against before subscribing. Tests and demos point USL_SEASONS_CSV at this file; so can you to run the example season instead of USL

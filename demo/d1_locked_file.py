@@ -24,6 +24,7 @@ Doc: docs/phases/09-break-and-fix.md
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -55,11 +56,24 @@ def say(text: str) -> None:
     print(f"\n== {text}")
 
 
+# The demos are written against the example season, whatever the machine's
+# .env says: the example seasons file, no current season, and no key, so no
+# request can be made and the committed archive is the only source.
+EXAMPLE_ENV = {
+    **os.environ,
+    "USL_SEASONS_CSV": str(REPO_ROOT / "usl" / "ref" / "seasons.example.csv"),
+    "USL_CURRENT_SEASON": "",
+    "FOOTYSTATS_API_KEY": "",
+}
+
+
 def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
     """Run python -m usl.run with the given arguments, capturing both streams."""
     command = [sys.executable, "-m", "usl.run", *args]
     print("$ " + " ".join(command[1:]))
-    return subprocess.run(command, cwd=REPO_ROOT, capture_output=True, text=True, check=False)
+    return subprocess.run(
+        command, cwd=REPO_ROOT, capture_output=True, text=True, check=False, env=EXAMPLE_ENV
+    )
 
 
 def show(lines: list[str]) -> None:

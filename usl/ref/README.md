@@ -59,10 +59,14 @@ than ground truth:
 A conference-season with no fixture at all is reported by the checks and not
 failed, so the USL rows do not break the example-season run.
 
-`seasons.csv` also lists the ten USL Championship seasons in scope (2017 to 2026)
-with an empty `season_id` and a `TODO` note each. The backfill skips those rows and
-reports them, so the file doubles as the "what have I not pulled yet" list during
-the subscription month.
+`seasons.csv` carries the USL Championship season ids for 2017 to 2025, pulled
+from `league-list` on the first day of the subscription. 2026 (season id 16540)
+is left blank until its conference rows exist, because a season with no
+conference rows stops the transform by design; the backfill skips a blank row
+and names it. FootyStats also has 2013 to 2016 (ids 4288, 4283, 4279, 1292),
+out of scope until someone writes their conference rows. The EPL example season
+lives in `seasons.example.csv`; `USL_SEASONS_CSV` points the pipeline at it, and
+the tests and demos do exactly that, so one database holds one league.
 
 `stadiums.csv` has a row for every club in `club_conference.csv`, EPL and USL, at
 city-level coordinates - daily weather does not differ across a metro, so a move
@@ -94,10 +98,10 @@ would drop the rows and tell you nothing. A club-season missing from
 join would otherwise drop it silently.
 
 **`seasons.csv` is the urgent one.** You cannot request a year from FootyStats, only
-a season id, and the mapping comes from the `league-list` endpoint. Fill it in during
-the subscription month - afterwards there is no way to look up an id you never
-recorded. **Before backfilling USL, delete the EPL row and run `make clean-db`** so
-one database holds one league.
+a season id, and the mapping comes from the `league-list` endpoint. It is filled in;
+the `league-list` response is archived beside the seasons, so the ids can always be
+looked up again. One database holds one league: the EPL example season is in its
+own file, and `make clean-db` between leagues.
 
 **`conference_structure.csv` needs a row per season and conference.** A season with
 no row and no `config.DEFAULT_PLAYOFF_SPOTS` produces null stakes features, and the

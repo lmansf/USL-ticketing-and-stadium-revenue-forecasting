@@ -194,14 +194,21 @@ listed by `python make.py help`.
 Then run the pipeline from the archive:
 
 ```
-make backfill      # 380 EPL matches from data/raw_archive/, no key needed
+make backfill      # every USL Championship season in usl/ref/seasons.csv, from data/raw_archive/ once archived
 make transform     # seven SQL models, seventeen checks
 make train         # both models, the naive baseline, seed variance, CV
 make export        # CSVs into tableau/extracts/
 ```
 
-`make backfill` a second time reports zero inserted and 380 unchanged. That is the
-idempotency guard, and it is the first thing anyone tries.
+`make backfill` a second time reports zero inserted and everything unchanged. That
+is the idempotency guard, and it is the first thing anyone tries.
+
+To run the EPL example season the pipeline was built against instead, point the
+backfill at its own seasons file; the tests and demos do the same:
+
+```
+USL_SEASONS_CSV=usl/ref/seasons.example.csv make backfill
+```
 
 ---
 
@@ -436,10 +443,11 @@ licence, and a machine that stays on.
 1. `python scripts/check_attendance_coverage.py` passes today from the archive. On
    day one of the subscription run it again with `--season-id <a USL season id>`.
    That is the gate; nothing else matters if it fails.
-2. Put the key in `.env`. Run `python -m usl.run league-list`, find USL Championship,
-   and paste each season's id into `usl/ref/seasons.csv` (the rows are there with
-   blank ids). **Delete the EPL row and run `make clean-db`** so one database holds
-   one league.
+2. The season ids are in `usl/ref/seasons.csv` for 2017 to 2025, from
+   `python -m usl.run league-list --filter "usl championship"`. 2026's id is in
+   that file's note, waiting on its conference rows. The EPL example season has
+   its own file, `seasons.example.csv`, so one database holds one league. Put the
+   key in `.env` and run `make clean-db` before the first USL backfill.
 3. The USL reference rows are already in. `usl/ref/club_conference.csv` holds
    every USL Championship club-season from 2017 to 2025 with its conference and
    display name, `usl/ref/conference_structure.csv` the playoff line for each,

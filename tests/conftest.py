@@ -21,6 +21,22 @@ from usl.transform.runner import materialise
 from usl.weather.schema import ensure_weather_table
 
 
+@pytest.fixture(autouse=True)
+def independent_of_the_developer_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tests never see the machine's .env: no key, no current season, the example seasons.
+
+    A paid key in .env must not let a test reach the network, and the USL
+    seasons file must not make the archive-only tests try to pull ten seasons.
+    Tests that need a key, a current season, or weather off set them on top.
+    """
+    monkeypatch.setattr(config, "FOOTYSTATS_API_KEY", "")
+    monkeypatch.setattr(config, "CURRENT_SEASON", None)
+    monkeypatch.setattr(config, "SEASONS_CSV", config.REF_DIR / "seasons.example.csv")
+    monkeypatch.setattr(config, "WEATHER_ENABLED", True)
+    for name in ("FOOTYSTATS_API_KEY", "USL_CURRENT_SEASON", "USL_SEASONS_CSV"):
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.fixture
 def con() -> Iterator[duckdb.DuckDBPyConnection]:
     """An in-memory DuckDB connection, fresh per test."""

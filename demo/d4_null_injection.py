@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -56,10 +57,23 @@ def check(condition: bool, what: str) -> bool:
     return condition
 
 
+# The demos are written against the example season, whatever the machine's
+# .env says: the example seasons file, no current season, and no key, so no
+# request can be made and the committed archive is the only source.
+EXAMPLE_ENV = {
+    **os.environ,
+    "USL_SEASONS_CSV": str(REPO_ROOT / "usl" / "ref" / "seasons.example.csv"),
+    "USL_CURRENT_SEASON": "",
+    "FOOTYSTATS_API_KEY": "",
+}
+
+
 def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
     command = [sys.executable, "-m", "usl.run", *args]
     print("$ " + " ".join(command[1:]))
-    return subprocess.run(command, cwd=REPO_ROOT, capture_output=True, text=True, check=False)
+    return subprocess.run(
+        command, cwd=REPO_ROOT, capture_output=True, text=True, check=False, env=EXAMPLE_ENV
+    )
 
 
 def scratch_database(directory: Path) -> Path:
