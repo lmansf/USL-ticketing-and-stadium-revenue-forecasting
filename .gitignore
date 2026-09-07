@@ -37,6 +37,9 @@ data/raw_archive/*.bad
 .cache/
 data/cache/
 
+# Dagster's scratch instance from `dagster dev` (phase two)
+.tmp_dagster_home_*/
+
 # Logs and run metadata
 logs/
 *.log
