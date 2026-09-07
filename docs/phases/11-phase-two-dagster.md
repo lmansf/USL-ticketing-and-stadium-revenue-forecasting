@@ -233,11 +233,13 @@ not render; the server is almost never the problem. In order:
 4. `pip show dagster dagster-webserver` must print the same version twice; if
    not, `pip install "dagster==X" "dagster-webserver==X"` with the `dagster`
    version.
-5. The browser console (F12, Console) names anything else. White in a private
-   window as well, with `/server_info` answering, means something on the
-   machine rewrites or blocks the page's scripts - an antivirus web shield
-   that scans local HTTP, or a browser policy - and the fix is its exclusion
-   list, not Dagster.
+5. `python scripts/check_dagster_ui.py` fetches the page and every script it
+   names outside any browser and says which one is missing or rewritten. Exit
+   0 there and white in every browser, private windows included, means
+   something on the machine intercepts the page on its way to the browser -
+   an antivirus web shield that scans local HTTP, or a browser policy - and
+   the fix is its exclusion list, not Dagster. The browser console (F12,
+   Console) names it.
 
 **The UI is optional.** Everything the UI does for this project is one CLI
 command each, against the same instance in `DAGSTER_HOME`:

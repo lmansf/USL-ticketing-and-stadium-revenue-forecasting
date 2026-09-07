@@ -12,6 +12,7 @@ the pipeline's internals is a scheduler you have to keep in sync with it.
 | `check_attendance_coverage.py` | **Run this before you subscribe.** Real working script, serves from the archive when the response is already there |
 | `propose_aliases.py` | **Run this after the first backfill.** Derives the provider-id rows of `club_aliases.csv` from the archive, through the name rows already there |
 | `verify_standings.py` | **Run this after the transform.** Checks every reconstructed club-season total against the provider's published tables, playoffs included |
+| `check_dagster_ui.py` | **Run this when the Dagster UI is a white screen.** Fetches what the page loads, outside any browser, and names the part that fails |
 | `run_weekly.ps1` | Weekly run, Windows Task Scheduler |
 | `run_weekly.sh` | Weekly run, cron / launchd / systemd timer |
 
@@ -68,6 +69,20 @@ provider's all-matches table, which includes playoff points, against the snapsho
 plus the playoff rows. On the ten archived USL seasons that is 289 club-seasons
 against the published totals and 181 against regular-season tables, with no
 mismatch. `tests/test_usl_archive.py` runs the same comparison in the test suite.
+
+## The white screen
+
+```
+python scripts/check_dagster_ui.py                            # while make dagster is up
+python scripts/check_dagster_ui.py --url http://127.0.0.1:3050
+```
+
+A white screen in the browser is a page that arrived and an app that did not
+run, and `/server_info` answering only says the server is up. The script fetches
+what the browser would - the versions, the page, every script it names, one
+GraphQL query - with a plain HTTP client, and prints one line per part. Exit 0
+means the fault is inside the browser and the console (F12) is the next place to
+look; 1 names the failing part and what to do about it; 2 means nothing answered.
 
 ## Exit codes
 
