@@ -246,9 +246,11 @@ INTERNAL error, check the DuckDB version before the query.
 
 ## Phase 06 - features
 
-- **Lag windows cross season boundaries.** A club's first home match of a season
-  takes its moving average from the end of the previous one. Support level carries
-  over; the alternative leaves every season opener with null lags.
+- **Lag windows cross season boundaries, not holes.** A club's first home match
+  of a season takes its moving average from the end of the previous one. Support
+  level carries over; the alternative leaves every season opener with null lags.
+  It does not carry over a gap longer than `config.LAG_MAX_GAP_DAYS` (see the
+  subscription-month section): after a hole in the record the history restarts.
 - **COVID is handled before lags.** Lag features are computed over played,
   non-COVID home matches only, then joined to every match, so a 2021 club's moving
   average is not dragged toward empty-stadium figures.
@@ -415,6 +417,54 @@ D3 edits `club_aliases.csv` in place and restores it byte for byte.
   would cross midnight, which the league does not schedule. Exact for the example
   season as well, whose latest kick-off is 20:00 UTC. The per-club column stays
   an option if a neutral-site match ever needs it.
+- **What the archive said about attendance.** 2017 to 2019 carry a gate on 94 to
+  100 percent of matches; 2020 on 12 percent (COVID); 2021, 2022 and 2023 on none
+  at all (`-1` on every row); 2024 and 2025 on 57 and 61 percent, missing by
+  month rather than by club. About 2,100 labelled matches in all, with a
+  four-season hole in the middle. The pipeline trains on what has a gate and
+  says how much that is on every run-log row; a second attendance source for
+  2021 to 2023 is the open item, not a blocker.
+- **Playoff matches are in the mart and out of the table.** FootyStats marks
+  rounds by id and the season's largest round is the regular season, which the
+  provider's own round names confirm for every archived season. A playoff match
+  adds no points, is not a scheduled fixture, is not the opener or the final home
+  match, does not feed the lag history, and reads the final regular-season table
+  through an ASOF join; it is live by definition and carries `is_playoff` as a
+  context feature, because a knockout match is the highest-stakes fixture the
+  league has. The decay curve is regular season only.
+- **An abandoned match is void.** One 2025 match is `incomplete` with a gate of
+  2,993: it kicked off and never reached a result, and the replay two days later
+  is its own row. `incomplete` with a gate recorded means abandoned, and void
+  keeps it out of the table, the schedule and the mart; the replay stands alone.
+  A cancelled fixture beside its replacement on the same date is not a
+  doubleheader either, so that check ignores void rows.
+- **Two conference corrections from the data.** The API's regular-season tables
+  agree with the hand-written lists for 2017, 2019, 2021 and 2023 club for club
+  and put FC Tulsa in the East for 2022 as well as 2023. For 2020, 2024 and 2025
+  the API's tables are empty and the fixture list decided:
+  `conference_membership_is_plausible` found Lexington SC playing 22 of 30
+  against Western clubs in 2025, so the league balanced that season at twelve a
+  side, not thirteen and eleven. Both rows carry the correction in their note.
+- **The lag history restarts after a gap.** With no gates for 2021 to 2023, a
+  2024 opener would have inherited its club's 2019 crowd as `last_home_gate`, and
+  19 of 24 did before the rule. `config.LAG_MAX_GAP_DAYS` (400, one off-season
+  and no more) partitions a club's gated home matches into eras that restart at
+  any longer gap; the moving averages are computed within an era and a gate older
+  than the limit is no lag at all. The price is null lags at the far side of a
+  hole, which the allowed-null list already covers.
+- **The standings are verified, not assumed.** `scripts/verify_standings.py`
+  compares every club-season with the provider's published tables two ways, and
+  on the nine seasons all 264 totals and all 181 regular-season group rows agree.
+  The same comparison runs in `tests/test_usl_archive.py`, so a reference-file
+  edit that moves a table is caught.
+- **What the first USL run showed.** Both XGBoost models beat the naive club mean
+  by about 400 attendees on the holdout and on every expanding-window fold. Model
+  B beats Model A by four attendees on the holdout, inside a seed spread of 20 to
+  40, and wins all four folds by 8 to 28: consistent in direction, small in size,
+  not yet outside the noise on any single split. Only 69 of 2,061 gated
+  regular-season home matches were played after mathematical elimination, because
+  eight of twelve qualify, so the decay curve has nothing to draw; that absence is
+  the thesis. The README carries the figures.
 - **The current season is a deployment setting.** `USL_CURRENT_SEASON` in `.env`
   on the machine that runs the Tuesday job, not a committed constant: it is a fact
   about where the pipeline runs, and committing it would make every clone's

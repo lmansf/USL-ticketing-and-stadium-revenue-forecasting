@@ -130,11 +130,16 @@ def test_write_appends_only_the_proposed_rows_and_a_rerun_is_clean(
 def test_example_season_is_fully_mapped_in_the_committed_csv(
     script: ModuleType, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The committed CSV and archive agree: twenty ids, all mapped, none in conflict."""
+    """The committed CSV and archive agree: every id seen is mapped, none in conflict.
+
+    Twenty EPL ids from the example season and fifty-one USL ids from the nine
+    archived USL seasons.
+    """
     assert script.main([]) == 0
     out = capsys.readouterr().out
-    assert "provider ids seen:  20" in out
-    assert "already mapped:     20" in out
+    assert "provider ids seen:  71" in out
+    assert "already mapped:     71" in out
+    assert "unmatched:          0" in out
     assert "conflicts:          0" in out
 
 
@@ -145,7 +150,7 @@ def test_example_season_ids_are_recovered_from_their_names(
     with open(config.CLUB_ALIASES_CSV, newline="", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
     numeric = {r["raw_name"]: r["club_id"] for r in rows if r["raw_name"].isdigit()}
-    assert len(numeric) == 20
+    assert len(numeric) == 71  # 20 EPL and 51 USL provider ids
     stripped = tmp_path / "club_aliases.csv"
     with open(stripped, "w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=["raw_name", "club_id", "note"])

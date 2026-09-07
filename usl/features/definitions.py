@@ -77,6 +77,7 @@ CONTEXT_FEATURES: tuple[str, ...] = (
     "matches_remaining",
     "is_season_opener",
     "is_final_home_match",
+    "is_playoff",  # a knockout match after the regular season: the highest stakes there are
 )
 
 # --------------------------------------------------------------------------
@@ -136,6 +137,7 @@ EVIDENCE: dict[str, Evidence] = {
     "matches_remaining": Evidence.MEASURED,
     "is_season_opener": Evidence.MEASURED,
     "is_final_home_match": Evidence.MEASURED,
+    "is_playoff": Evidence.MEASURED,
     # The dead-rubber counterfactual is measured: real attendance on
     # eliminated-club home matches across nine seasons.
     "matches_since_elimination": Evidence.MEASURED,

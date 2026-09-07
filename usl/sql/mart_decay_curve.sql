@@ -21,7 +21,7 @@
 WITH home_gates AS (
     SELECT season, home_club_id, attendance, matches_since_elimination
     FROM mart_match_features
-    WHERE is_played AND NOT is_covid_affected AND attendance IS NOT NULL
+    WHERE is_played AND NOT is_covid_affected AND attendance IS NOT NULL AND NOT is_playoff
 ),
 baseline AS (
     SELECT season, home_club_id, AVG(attendance) AS baseline_gate

@@ -45,9 +45,15 @@ than ground truth:
   `all_conference_clubs_have_fixtures` names a club they include that did not
   play, and `conference_membership_is_plausible` names a club filed under the
   wrong conference from its fixture list.
-- What the CSV cannot hold in advance is the provider's numeric club id, which
-  is the join key. `scripts/propose_aliases.py` derives those rows from the
-  archive through the name rows; run it after the first backfill.
+- The provider's numeric club ids, the join key, were derived from the archive
+  by `scripts/propose_aliases.py` through the name rows: 51 USL ids, 46 matched
+  by name and 5 after a name row was added by hand. Every id the nine seasons
+  carry is mapped.
+- The lists were verified against the provider's own tables once the seasons
+  were archived: club for club for 2017, 2019, 2021 and 2023; FC Tulsa moved to
+  the East for 2022 as well as 2023; and the fixture list put Lexington SC in the
+  West for 2025 (22 of 30 matches against Western clubs). The corrected rows
+  say so in their notes.
 - 2021 was played in four divisions (Atlantic, Central, Mountain, Pacific) and
   the division is the conference in that season, because it is the field a club
   was ranked against and the line it chased. 2020's eight COVID groups are

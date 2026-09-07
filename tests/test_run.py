@@ -310,8 +310,15 @@ def test_locked_database_exits_3(db: Path, caplog: pytest.LogCaptureFixture) -> 
     assert f"PID {holder.pid}" in caplog.text
 
 
-def test_league_list_without_a_key_exits_1(capsys: pytest.CaptureFixture[str]) -> None:
-    """No key and no archived response: a named refusal, no network call, exit 1."""
+def test_league_list_without_a_key_exits_1(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """No key and no archived response: a named refusal, no network call, exit 1.
+
+    The committed archive carries the league list from the subscription, so
+    the empty-archive case needs an empty archive.
+    """
+    monkeypatch.setattr(config, "ARCHIVE_DIR", tmp_path / "empty")
     assert main(["league-list"]) == EXIT_FAILED
     assert "needs a key" in capsys.readouterr().err
 

@@ -27,9 +27,9 @@
 -- matches. Those belong in int_standings and mart_match_features.
 --
 -- Columns: match_id, season, season_id, date, kickoff_utc, status, is_played, is_void,
---          home_raw, away_raw, home_club_id, away_club_id, home_goals,
---          away_goals, attendance, is_covid_affected, day_of_week, month,
---          is_weekend, is_midweek
+--          round_id, is_playoff, home_raw, away_raw, home_club_id,
+--          away_club_id, home_goals, away_goals, attendance,
+--          is_covid_affected, day_of_week, month, is_weekend, is_midweek
 
 WITH typed AS (
     SELECT
@@ -45,6 +45,9 @@ WITH typed AS (
         r.status,
         r.home_raw,
         r.away_raw,
+        -- the provider's round id, from the full record: the regular season is
+        -- one round and every playoff round is another
+        json_extract_string(r.raw_json, '$.roundID')                        AS round_id,
         TRY_CAST(r.home_goals AS INTEGER)                                   AS home_goals_raw,
         TRY_CAST(r.away_goals AS INTEGER)                                   AS away_goals_raw,
         TRY_CAST(r.attendance AS INTEGER)                                   AS attendance_raw
@@ -60,15 +63,35 @@ played AS (
             FALSE
         ) AS is_played,
         -- a fixture the provider says will never be played. Kept, flagged, and
-        -- left out of everything downstream that counts fixtures.
+        -- left out of everything downstream that counts fixtures. An abandoned
+        -- match is void too: 'incomplete' with a gate recorded means it kicked
+        -- off and never reached a result, and the replay is its own row (USL
+        -- 2025 has one). A match in progress during a run reads the same way
+        -- and flips back on the next rebuild, because every model is rebuilt.
         COALESCE(
             list_contains(
                 string_split((SELECT void_statuses FROM ref_config), ','),
                 lower(trim(t.status))
             ),
             FALSE
-        ) AS is_void
+        )
+        OR COALESCE(lower(trim(t.status)) = 'incomplete' AND t.attendance_raw > 0, FALSE)
+                                                                            AS is_void
     FROM typed t
+),
+round_sizes AS (
+    SELECT season, round_id, COUNT(*) AS n
+    FROM played
+    WHERE round_id IS NOT NULL
+    GROUP BY season, round_id
+),
+regular_round AS (
+    -- the season's largest round is the regular season; verified against the
+    -- provider's own round names for every archived USL season (build
+    -- decisions, "the subscription month"). Everything else is a playoff.
+    SELECT season, round_id
+    FROM round_sizes
+    QUALIFY ROW_NUMBER() OVER (PARTITION BY season ORDER BY n DESC, round_id) = 1
 )
 SELECT
     p.match_id,
@@ -79,6 +102,11 @@ SELECT
     p.status,
     p.is_played,
     p.is_void,
+    p.round_id,
+    -- a playoff match is a real match with a real gate, but it adds nothing to
+    -- the table and is not a fixture the schedule counts
+    COALESCE(p.round_id IS NOT NULL AND rr.round_id IS NOT NULL AND p.round_id <> rr.round_id,
+             FALSE)                                                         AS is_playoff,
     p.home_raw,
     p.away_raw,
     h.club_id                                                               AS home_club_id,
@@ -96,6 +124,8 @@ SELECT
     dayofweek(p.date) IN (0, 6)                                             AS is_weekend,
     dayofweek(p.date) IN (2, 3, 4)                                          AS is_midweek
 FROM played p
+LEFT JOIN regular_round rr
+    ON rr.season = p.season
 -- The alias side is already normalised by reference.read_reference_csv; the
 -- raw side is normalised here with the same expression (reference.NORMALIZE_SQL).
 LEFT JOIN club_aliases h

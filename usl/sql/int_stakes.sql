@@ -46,12 +46,15 @@ WITH fixture_counts AS (
     -- the club's scheduled fixtures in the season, played or not, from the
     -- schedule rather than a hardcoded number - it is not constant across
     -- seasons. A void fixture (cancelled, never to be played) is not one:
-    -- counting it would keep an eliminated club reading live by three points
+    -- counting it would keep an eliminated club reading live by three points.
+    -- Neither is a playoff match: the schedule is the regular season's
     SELECT season, club_id, COUNT(*) AS fixtures_total
     FROM (
-        SELECT season, home_club_id AS club_id FROM stg_matches WHERE NOT is_void
+        SELECT season, home_club_id AS club_id FROM stg_matches
+        WHERE NOT is_void AND NOT is_playoff
         UNION ALL
-        SELECT season, away_club_id FROM stg_matches WHERE NOT is_void
+        SELECT season, away_club_id FROM stg_matches
+        WHERE NOT is_void AND NOT is_playoff
     )
     GROUP BY season, club_id
 ),

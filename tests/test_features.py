@@ -684,3 +684,102 @@ def test_matches_since_elimination_counts_unplayed_home_fixtures(
     assert rows["e11"]["matches_since_elimination"] == 0
     assert rows["e12"]["matches_since_elimination"] == 1
     assert rows["e11"]["is_played"] is False
+
+
+def test_playoff_match_reads_the_final_table_and_counts_for_nothing(
+    con: duckdb.DuckDBPyConnection, tiny_season: pd.DataFrame, tiny_clubs: pd.DataFrame
+) -> None:
+    """A playoff match is a mart row with the final table, and adds nothing to it.
+
+    m7 is a knockout match a week after the regular season ends. It must not
+    add points or extend the standings grid, must not count as a scheduled
+    fixture, must not be the club's final home match, must not feed the lag
+    history of the next match, and must read the final regular-season table
+    for rank_before while being live by definition.
+    """
+    season = pd.concat(
+        [
+            tiny_season,
+            matches([("m7", 2024, "2024-03-23", "club_a", "club_b", 1, 0, 9000)]),
+            matches([("m8", 2024, "2024-03-30", "club_a", "club_c", 2, 2, 4800)]),
+        ],
+        ignore_index=True,
+    )
+    stage_frames(con, season, tiny_clubs, playoff=["m7", "m8"])
+    for model in DOWNSTREAM_MODELS:
+        runner.materialise(con, model)
+
+    grid_end = con.execute("SELECT max(date) FROM int_standings").fetchone()
+    assert grid_end == (dt.date(2024, 3, 17),)  # snapshot the day after the last fixture
+    final = con.execute(
+        "SELECT club_id, pts_before FROM int_standings WHERE date = DATE '2024-03-17' "
+        "ORDER BY rank_before"
+    ).fetchall()
+    assert final[0] == ("club_a", 7)  # the playoff win did not add three points
+    fixtures = con.execute(
+        "SELECT DISTINCT fixtures_total FROM int_stakes WHERE club_id = 'club_a'"
+    ).fetchall()
+    assert fixtures == [(3,)]
+
+    rows = mart(con)
+    assert len(rows) == 8
+    m7 = rows["m7"]
+    assert m7["is_playoff"] is True
+    assert m7["rank_before"] == 1 and m7["opponent_rank_before"] == 2
+    assert m7["matches_remaining"] == 0
+    assert m7["is_mathematically_live"] is True
+    assert m7["matches_since_elimination"] == -1
+    assert m7["is_season_opener"] is False and m7["is_final_home_match"] is False
+    assert rows["m5"]["is_final_home_match"] is True  # club_a's last regular home match
+    assert m7["last_home_gate"] == 5500  # from m5, the regular-season history
+    # the playoff gate of 9000 does not enter the next match's lag history
+    assert rows["m8"]["last_home_gate"] == 5500
+    assert rows["m8"]["is_playoff"] is True
+    assert features_not_null(con).passed
+    assert mart_matches_staging(con).passed
+    # the decay curve is regular season only: no playoff row can be a dead rubber
+    decay = con.execute("SELECT sum(n) FROM mart_decay_curve").fetchone()
+    regular_dead = con.execute(
+        "SELECT count(*) FROM mart_match_features WHERE matches_since_elimination >= 0 "
+        "AND NOT is_playoff AND attendance IS NOT NULL"
+    ).fetchone()
+    assert (decay[0] or 0) == regular_dead[0]
+
+
+def test_lag_history_restarts_after_a_gap_longer_than_the_limit(
+    con: duckdb.DuckDBPyConnection, tiny_clubs: pd.DataFrame, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A gate older than config.LAG_MAX_GAP_DAYS is not history.
+
+    club_a plays at home in 2019, then not until 2024 (the archive has no
+    gates for 2021 to 2023). Its 2024 opener must not inherit the 2019 crowd,
+    and its second 2024 home match must average 2024 gates only. A gap inside
+    the limit - one off-season - carries over as before.
+    """
+    monkeypatch.setattr(config, "LAG_MAX_GAP_DAYS", 400)
+    rows = matches(
+        [
+            ("g1", 2019, "2019-03-02", "club_a", "club_b", 1, 0, 9000),
+            ("g2", 2019, "2019-03-09", "club_a", "club_c", 1, 0, 9100),
+            ("g3", 2019, "2019-03-16", "club_a", "club_d", 1, 0, 9200),
+            ("g4", 2020, "2020-03-07", "club_a", "club_b", 1, 0, 1000),  # one off-season: carries
+            ("g5", 2024, "2024-03-02", "club_a", "club_c", 1, 0, 3000),  # four years: restarts
+            ("g6", 2024, "2024-03-09", "club_a", "club_d", 1, 0, 3500),
+            ("g7", 2024, "2024-03-16", "club_a", "club_b", 1, 0, 4000),
+        ]
+    )
+    club_rows = pd.concat(
+        [tiny_clubs.assign(season=year) for year in (2019, 2020, 2024)], ignore_index=True
+    )
+    monkeypatch.setattr(config, "COVID_START", dt.date(2021, 1, 1))  # keep 2020 in the history
+    monkeypatch.setattr(config, "COVID_END", dt.date(2021, 1, 2))
+    build_mart(con, rows, club_rows)
+    got = mart(con)
+    assert got["g4"]["last_home_gate"] == 9200  # 356 days on: still history
+    assert got["g4"]["home_gate_ma3"] == pytest.approx((9000 + 9100 + 9200) / 3)
+    assert got["g5"]["last_home_gate"] is None  # 2020's gate is 1,456 days old
+    assert got["g5"]["home_gate_ma3"] is None
+    assert got["g6"]["last_home_gate"] == 3000
+    assert got["g6"]["home_gate_ma3"] == 3000  # the window restarted: no 2019 or 2020 gate in it
+    assert got["g7"]["home_gate_ma3"] == pytest.approx((3000 + 3500) / 2)
+    assert features_not_null(con).passed

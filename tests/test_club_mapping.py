@@ -633,3 +633,66 @@ def test_club_filed_under_the_wrong_conference_is_named_by_its_schedule(
     # a void fixture is not evidence either way
     stage_frames(con, matches, misfiled, void=["e2", "e3", "e6"])
     assert conference_membership_is_plausible(con).passed
+
+
+def test_abandoned_match_is_void_and_the_replay_stands_alone(
+    con: duckdb.DuckDBPyConnection,
+    tiny_raw: pd.DataFrame,
+    club_aliases: pd.DataFrame,
+    tiny_clubs: pd.DataFrame,
+) -> None:
+    """'incomplete' with a gate recorded is a match that kicked off and never finished.
+
+    USL 2025 has one: 0-0 after 2,993 came through the gate, replayed two days
+    later as its own row. It is void, not unplayed - nobody will play it - and
+    the consistency check counts it as abandoned rather than as drift.
+    """
+    from usl.transform.checks import played_rows_consistent
+
+    raw = tiny_raw.copy()
+    raw.loc[0, "status"] = "incomplete"  # m1: score 2-0 and a gate of 5000 still on the row
+    _stage_from_frames(con, raw, club_aliases, tiny_clubs)
+    row = con.execute(
+        "SELECT is_played, is_void, attendance FROM stg_matches WHERE match_id = 'm1'"
+    ).fetchone()
+    assert row == (False, True, None)
+    result = played_rows_consistent(con)
+    assert result.passed
+    assert result.metadata["abandoned"] == 1
+    assert result.metadata["inconsistent_statuses"] == {}
+
+    # a future fixture that is merely incomplete, with no gate, is not void
+    con.execute("DROP TABLE raw_matches")
+    raw = tiny_raw.copy()
+    raw.loc[0, "status"] = "incomplete"
+    raw.loc[0, "attendance"] = None
+    _stage_from_frames(con, raw, club_aliases, tiny_clubs)
+    assert con.execute("SELECT is_void FROM stg_matches WHERE match_id = 'm1'").fetchone() == (
+        False,
+    )
+    assert played_rows_consistent(con).metadata["abandoned"] == 0
+
+
+def test_cancelled_fixture_beside_its_replacement_is_not_a_doubleheader(
+    con: duckdb.DuckDBPyConnection, tiny_season: pd.DataFrame, tiny_clubs: pd.DataFrame
+) -> None:
+    """A void fixture on the same date as the match that replaced it must not fire the check."""
+    from usl.transform.checks import one_match_per_club_per_date
+
+    season = pd.concat(
+        [
+            tiny_season,
+            pd.DataFrame(
+                [("m7", 2024, "2024-03-02", "club_c", "club_a", None, None, None)],
+                columns=tiny_season.columns,
+            ),
+        ],
+        ignore_index=True,
+    )
+    stage_frames(con, season, tiny_clubs)
+    fired = one_match_per_club_per_date(con)
+    assert not fired.passed
+    assert {d["club_id"] for d in fired.metadata["club_dates"]} == {"club_a", "club_c"}
+
+    stage_frames(con, season, tiny_clubs, void=["m7"])
+    assert one_match_per_club_per_date(con).passed

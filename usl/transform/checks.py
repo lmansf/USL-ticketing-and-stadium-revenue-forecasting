@@ -62,14 +62,14 @@ _CLUB_MATCH_POINTS_SQL = """
                 WHEN home_goals = away_goals THEN 1 ELSE 0 END AS points,
            home_goals - away_goals AS gd,
            home_goals AS gf
-    FROM stg_matches WHERE is_played
+    FROM stg_matches WHERE is_played AND NOT is_playoff
     UNION ALL
     SELECT season, date, away_club_id,
            CASE WHEN away_goals > home_goals THEN 3
                 WHEN away_goals = home_goals THEN 1 ELSE 0 END,
            away_goals - home_goals,
            away_goals
-    FROM stg_matches WHERE is_played
+    FROM stg_matches WHERE is_played AND NOT is_playoff
 """
 
 
@@ -255,9 +255,11 @@ def one_match_per_club_per_date(con: duckdb.DuckDBPyConnection) -> CheckResult:
     rows = con.execute(
         """
         WITH club_dates AS (
-            SELECT season, date, home_club_id AS club_id FROM stg_matches
+            -- a cancelled fixture beside its replacement on the same date is
+            -- not a doubleheader
+            SELECT season, date, home_club_id AS club_id FROM stg_matches WHERE NOT is_void
             UNION ALL
-            SELECT season, date, away_club_id FROM stg_matches
+            SELECT season, date, away_club_id FROM stg_matches WHERE NOT is_void
         )
         SELECT season, club_id, date, count(*) AS n
         FROM club_dates
@@ -421,6 +423,7 @@ def played_rows_consistent(con: duckdb.DuckDBPyConnection) -> CheckResult:
         FROM raw_matches r
         JOIN stg_matches s USING (match_id)
         WHERE NOT s.is_played
+          AND NOT s.is_void
           AND TRY_CAST(r.home_goals AS INTEGER) IS NOT NULL
           AND TRY_CAST(r.away_goals AS INTEGER) IS NOT NULL
           AND TRY_CAST(r.attendance AS INTEGER) > 0
@@ -428,6 +431,14 @@ def played_rows_consistent(con: duckdb.DuckDBPyConnection) -> CheckResult:
         ORDER BY 1
         """
     ).fetchall()
+    # an abandoned match: kicked off, a gate recorded, never a result. Void by
+    # the staging rule, so not an inconsistency - but worth a count
+    abandoned_row = con.execute(
+        """
+        SELECT count(*) FROM raw_matches r JOIN stg_matches s USING (match_id)
+        WHERE s.is_void AND lower(trim(r.status)) = 'incomplete'
+        """
+    ).fetchone()
     unknown = con.execute(
         """
         SELECT COALESCE(status, '<null>') AS status, count(*)
@@ -441,6 +452,7 @@ def played_rows_consistent(con: duckdb.DuckDBPyConnection) -> CheckResult:
     metadata: dict[str, Any] = {
         "inconsistent_statuses": {str(r[0]): int(r[1]) for r in inconsistent},
         "unknown_statuses": {str(r[0]): int(r[1]) for r in unknown},
+        "abandoned": int(abandoned_row[0]) if abandoned_row else 0,
         "known_statuses": known,
     }
     if inconsistent or unknown:
@@ -580,10 +592,10 @@ def conference_membership_is_plausible(con: duckdb.DuckDBPyConnection) -> CheckR
         """
         WITH sides AS (
             SELECT season, home_club_id AS club_id, away_club_id AS other
-            FROM stg_matches WHERE NOT is_void
+            FROM stg_matches WHERE NOT is_void AND NOT is_playoff
             UNION ALL
             SELECT season, away_club_id, home_club_id
-            FROM stg_matches WHERE NOT is_void
+            FROM stg_matches WHERE NOT is_void AND NOT is_playoff
         ),
         split AS (
             SELECT s.season, s.club_id, c.conference,

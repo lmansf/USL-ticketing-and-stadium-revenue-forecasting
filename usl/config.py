@@ -304,6 +304,15 @@ IMPORTANCE_TYPE: str = "gain"
 # Freshness check: how stale the latest match may be, in season, before failing.
 MAX_MATCH_AGE_DAYS: int = 10
 
+# Lag features (last_home_gate, the moving averages) carry over from the
+# previous season, because support level does. They do not carry over a hole:
+# a gate older than this many days is not history, and the moving averages
+# restart after it. 400 days spans one off-season (about 150 to 200 days
+# between a club's last home match and its next opener) and no more. The USL
+# archive has no gates for 2021 to 2023, so without this a 2024 opener would
+# inherit its club's 2019 crowd. Nulls inside the gap are allowed nulls.
+LAG_MAX_GAP_DAYS: int = 400
+
 # Feature columns permitted to contain nulls, and why. Everything else failing
 # the not-null check is a bug. See docs/phases/05-sql-layer.md
 #

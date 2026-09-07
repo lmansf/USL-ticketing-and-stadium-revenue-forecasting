@@ -16,9 +16,12 @@
 -- Training filters on is_played.
 --
 -- CALENDAR AND LAG
---   The lag history is the club's PLAYED, NON-COVID home matches with a known
---   gate, ordered by date and crossing season boundaries (support level
---   carries over; the alternative leaves every opener with null lags). COVID
+--   The lag history is the club's PLAYED, NON-COVID, regular-season home
+--   matches with a known gate, ordered by date and crossing season boundaries
+--   (support level carries over; the alternative leaves every opener with null
+--   lags) but not crossing a gap longer than config.LAG_MAX_GAP_DAYS: after a
+--   hole in the record the history restarts and the lags are null until it
+--   has rebuilt, which is what the allowed-null list is for. COVID
 --   is handled before the lags, not after, so a 2021 moving average is not
 --   dragged toward empty-stadium figures. The windows include the current
 --   row (*_after) and are then joined to EVERY match by a strict ASOF join on
@@ -31,6 +34,11 @@
 -- MATCH CONTEXT
 --   is_derby from usl/ref/derbies.csv, either direction. matches_remaining
 --   from int_stakes, which counts the schedule rather than hardcoding it.
+--   is_playoff: a playoff match is in the mart as a row - it is a real match
+--   with a real gate, and the highest-stakes one there is - but it adds no
+--   points to the table, is not a scheduled fixture, is not the season's
+--   opener or final home match, does not enter the lag history, and reads the
+--   final regular-season table for its standings features.
 --
 -- WEATHER (phase two)
 --   From stg_weather on (home_club_id, date): observed for a played match once
@@ -47,30 +55,63 @@
 --   after elimination is 0. points_from_relegation_line is instrumented, not
 --   validated: no relegation exists in USL data.
 
-WITH gates AS (
-    -- the lag history, windows INCLUDING the current row
+WITH gaps AS (
+    -- the club's gated, regular-season, non-COVID home matches, in order, and
+    -- whether each one follows a gap longer than ref_config.lag_max_gap_days
+    SELECT
+        home_club_id,
+        match_id,
+        date,
+        attendance,
+        COALESCE(
+            date - LAG(date) OVER (PARTITION BY home_club_id ORDER BY date, match_id)
+                > (SELECT lag_max_gap_days FROM ref_config),
+            FALSE
+        ) AS after_gap
+    FROM stg_matches
+    WHERE is_played AND NOT is_covid_affected AND attendance IS NOT NULL AND NOT is_playoff
+),
+gated AS (
+    -- an era increments at every such gap. Support level carries over an
+    -- off-season; it does not carry over a hole in the record (the archive has
+    -- no gates for 2021 to 2023), so the windows restart at the far side of one
+    SELECT
+        home_club_id,
+        match_id,
+        date,
+        attendance,
+        SUM(CASE WHEN after_gap THEN 1 ELSE 0 END) OVER (
+            PARTITION BY home_club_id ORDER BY date, match_id
+        ) AS era
+    FROM gaps
+),
+gates AS (
+    -- the lag history, windows INCLUDING the current row, within the era
     SELECT
         home_club_id,
         date,
         attendance AS gate_after,
         AVG(attendance) OVER (
-            PARTITION BY home_club_id ORDER BY date, match_id
+            PARTITION BY home_club_id, era ORDER BY date, match_id
             ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
         ) AS ma3_after,
         AVG(attendance) OVER (
-            PARTITION BY home_club_id ORDER BY date, match_id
+            PARTITION BY home_club_id, era ORDER BY date, match_id
             ROWS BETWEEN 4 PRECEDING AND CURRENT ROW
         ) AS ma5_after
-    FROM stg_matches
-    WHERE is_played AND NOT is_covid_affected AND attendance IS NOT NULL
+    FROM gated
 ),
 lagged AS (
-    -- strictly earlier gates only: m.date > g.date
+    -- strictly earlier gates only (m.date > g.date), and only recent enough
+    -- to be history: a gate from before the gap is no gate at all
     SELECT
         m.match_id,
-        g.gate_after AS last_home_gate,
-        g.ma3_after  AS home_gate_ma3,
-        g.ma5_after  AS home_gate_ma5
+        CASE WHEN m.date - g.date <= (SELECT lag_max_gap_days FROM ref_config)
+             THEN g.gate_after END AS last_home_gate,
+        CASE WHEN m.date - g.date <= (SELECT lag_max_gap_days FROM ref_config)
+             THEN g.ma3_after END  AS home_gate_ma3,
+        CASE WHEN m.date - g.date <= (SELECT lag_max_gap_days FROM ref_config)
+             THEN g.ma5_after END  AS home_gate_ma5
     FROM stg_matches m
     ASOF LEFT JOIN gates g
       ON g.home_club_id = m.home_club_id
@@ -90,6 +131,7 @@ previous_fixture AS (
      AND p.season = m.season - 1
      AND p.is_played
      AND NOT p.is_covid_affected
+     AND NOT p.is_playoff
      AND p.attendance IS NOT NULL
 ),
 home_sequence AS (
@@ -102,7 +144,7 @@ home_sequence AS (
             PARTITION BY home_club_id, season ORDER BY date DESC, match_id DESC
         ) = 1 AS is_final_home_match
     FROM stg_matches
-    WHERE NOT is_void
+    WHERE NOT is_void AND NOT is_playoff
 ),
 derby_pairs AS (
     -- both directions, deduplicated, so the join below cannot fan out even if
@@ -120,6 +162,7 @@ joined AS (
         m.attendance,
         m.is_played,
         m.is_covid_affected,
+        m.is_playoff,
         m.day_of_week,
         m.month,
         m.is_weekend,
@@ -131,15 +174,17 @@ joined AS (
         m.away_club_id AS opponent_club_id,
         dp.home_id IS NOT NULL AS is_derby,
         kh.matches_remaining,
-        hs.is_season_opener,
-        hs.is_final_home_match,
+        -- a playoff match is neither the opener nor the final home match
+        COALESCE(hs.is_season_opener, FALSE)     AS is_season_opener,
+        COALESCE(hs.is_final_home_match, FALSE)  AS is_final_home_match,
         sh.rank_before,
         sa.rank_before AS opponent_rank_before,
         kh.points_from_playoff_line,
-        kh.is_mathematically_live,
+        -- a club in the playoffs is live by definition
+        (m.is_playoff OR kh.is_mathematically_live) AS is_mathematically_live,
         kh.points_from_relegation_line,
-        -- live on this date: never eliminated, or eliminated later
-        (kh.eliminated_on IS NULL OR m.date < kh.eliminated_on) AS home_is_live,
+        -- live on this date: never eliminated, eliminated later, or in the playoffs
+        (m.is_playoff OR kh.eliminated_on IS NULL OR m.date < kh.eliminated_on) AS home_is_live,
         w.weather_source,
         w.forecast_horizon_days AS weather_horizon_days,
         w.temp_max_c,
@@ -156,12 +201,14 @@ joined AS (
       ON hs.match_id = m.match_id
     LEFT JOIN derby_pairs dp
       ON dp.home_id = m.home_club_id AND dp.away_id = m.away_club_id
-    LEFT JOIN int_standings sh
-      ON sh.club_id = m.home_club_id AND sh.season = m.season AND sh.date = m.date
-    LEFT JOIN int_standings sa
-      ON sa.club_id = m.away_club_id AND sa.season = m.season AND sa.date = m.date
-    LEFT JOIN int_stakes kh
-      ON kh.club_id = m.home_club_id AND kh.season = m.season AND kh.date = m.date
+    -- ASOF: a regular-season match date is a grid date and matches itself; a
+    -- playoff date is after the grid and reads the snapshot row, the final table
+    ASOF LEFT JOIN int_standings sh
+      ON sh.club_id = m.home_club_id AND sh.season = m.season AND sh.date <= m.date
+    ASOF LEFT JOIN int_standings sa
+      ON sa.club_id = m.away_club_id AND sa.season = m.season AND sa.date <= m.date
+    ASOF LEFT JOIN int_stakes kh
+      ON kh.club_id = m.home_club_id AND kh.season = m.season AND kh.date <= m.date
     LEFT JOIN stg_weather w
       ON w.club_id = m.home_club_id AND w.date = m.date
     -- a void fixture is not a match: no features, no forecast
@@ -198,6 +245,7 @@ SELECT
     j.matches_remaining,
     j.is_season_opener,
     j.is_final_home_match,
+    j.is_playoff,
     -- pro-rel
     j.rank_before,
     j.opponent_rank_before,

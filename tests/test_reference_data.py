@@ -38,14 +38,14 @@ USL_CONFERENCE_SIZES: dict[tuple[int, str], int] = {
     (2021, "Central"): 8,
     (2021, "Mountain"): 7,
     (2021, "Pacific"): 8,
-    (2022, "Eastern"): 13,
-    (2022, "Western"): 14,
+    (2022, "Eastern"): 14,
+    (2022, "Western"): 13,
     (2023, "Eastern"): 12,
     (2023, "Western"): 12,
     (2024, "Eastern"): 12,
     (2024, "Western"): 12,
-    (2025, "Eastern"): 13,
-    (2025, "Western"): 11,
+    (2025, "Eastern"): 12,
+    (2025, "Western"): 12,
 }
 
 

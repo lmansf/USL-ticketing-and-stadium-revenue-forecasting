@@ -151,6 +151,7 @@ def synthetic_mart(*, n_future: int = N_FUTURE, seed: int = 0) -> pd.DataFrame:
                     "matches_remaining": sum(1 for d in club_dates[home] if d >= date),
                     "is_season_opener": date == home_dates[home][0],
                     "is_final_home_match": date == home_dates[home][-1],
+                    "is_playoff": False,
                     "rank_before": rank_before,
                     "opponent_rank_before": opponent_rank,
                     "rank_gap": opponent_rank - rank_before,

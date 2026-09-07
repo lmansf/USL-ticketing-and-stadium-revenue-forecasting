@@ -176,10 +176,19 @@ def propose(aliases: list[dict[str, str]], sightings: dict[str, Sighting]) -> Pr
 
 
 def append_rows(path: Path, rows: list[tuple[str, str, str]]) -> None:
-    """Append proposed rows to the CSV, one line each, nothing quoted."""
+    """Append proposed rows to the CSV, one line each, nothing quoted.
+
+    The file's own line ending is kept and a missing final newline is added
+    first: a file with mixed endings, or a row glued to the previous last
+    line, is one DuckDB's CSV sniffer refuses to read at all.
+    """
+    existing = path.read_bytes()
+    ending = "\r\n" if b"\r\n" in existing else "\n"
     with open(path, "a", encoding="utf-8", newline="") as fh:
+        if existing and not existing.endswith(b"\n"):
+            fh.write(ending)
         for raw_name, club_id, note in rows:
-            fh.write(f"{raw_name},{club_id},{note}\n")
+            fh.write(f"{raw_name},{club_id},{note}{ending}")
 
 
 def main(argv: list[str] | None = None) -> int:

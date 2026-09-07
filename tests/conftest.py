@@ -204,6 +204,7 @@ def stage_frames(
     structure: pd.DataFrame | None = None,
     derbies: pd.DataFrame | None = None,
     void: list[str] | None = None,
+    playoff: list[str] | None = None,
     stadiums: pd.DataFrame | None = None,
     weather: pd.DataFrame | None = None,
 ) -> None:
@@ -222,6 +223,7 @@ def stage_frames(
             one relegation spot for every (season, conference) in clubs.
         derbies: derbies rows. Defaults to none.
         void: match_ids to mark is_void (a cancelled fixture). Defaults to none.
+        playoff: match_ids to mark is_playoff. Defaults to none.
         stadiums: stadiums rows (club_id, stadium, lat, lon, valid_from,
             valid_to, note). Defaults to one row per club covering every date.
         weather: raw_weather-shaped rows (club_id, date, weather_source,
@@ -244,6 +246,8 @@ def stage_frames(
             CASE WHEN home_goals IS NULL THEN 'incomplete' ELSE 'complete' END AS status,
             home_goals IS NOT NULL                            AS is_played,
             list_contains($void, CAST(match_id AS VARCHAR))   AS is_void,
+            CAST(NULL AS VARCHAR)                             AS round_id,
+            list_contains($playoff, CAST(match_id AS VARCHAR)) AS is_playoff,
             CAST(home_club_id AS VARCHAR)                     AS home_raw,
             CAST(away_club_id AS VARCHAR)                     AS away_raw,
             CAST(home_club_id AS VARCHAR)                     AS home_club_id,
@@ -259,7 +263,7 @@ def stage_frames(
             dayofweek(CAST(date AS DATE)) IN (2, 3, 4)        AS is_midweek
         FROM _matches
         """,
-        {"void": list(void or [])},
+        {"void": list(void or []), "playoff": list(playoff or [])},
     )
     con.unregister("_matches")
 

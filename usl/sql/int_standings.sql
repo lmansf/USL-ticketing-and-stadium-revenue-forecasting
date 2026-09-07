@@ -8,9 +8,11 @@
 -- as a running calculation over match history.
 --
 -- Grain: one row per club in the conference for every date on which any club
--- of that conference has a fixture, played or not (exercise 4.2, resolved in
--- favour of the full field), plus one snapshot row per conference-season the
--- day after its last fixture so the final table exists as a row.
+-- of that conference has a regular-season fixture, played or not (exercise
+-- 4.2, resolved in favour of the full field), plus one snapshot row per
+-- conference-season the day after its last fixture so the final table exists
+-- as a row. Playoff matches add no points and no dates: the table is the
+-- regular season's, and a playoff row in the mart reads the snapshot.
 --
 -- POINT-IN-TIME. Running totals are computed INCLUDING each match
 -- (ROWS ... AND CURRENT ROW, the *_after columns) and every grid row is then
@@ -46,7 +48,7 @@ WITH club_matches AS (
         home_goals   AS gf,
         away_goals   AS ga
     FROM stg_matches
-    WHERE is_played
+    WHERE is_played AND NOT is_playoff
     UNION ALL
     SELECT
         season,
@@ -58,7 +60,7 @@ WITH club_matches AS (
         away_goals,
         home_goals
     FROM stg_matches
-    WHERE is_played
+    WHERE is_played AND NOT is_playoff
 ),
 with_conference AS (
     SELECT m.season, c.conference, m.club_id, m.date, m.points, m.gf, m.ga
@@ -91,12 +93,12 @@ fixtures AS (
     SELECT m.season, c.conference, m.home_club_id AS club_id, m.date
     FROM stg_matches m
     JOIN stg_clubs c ON c.club_id = m.home_club_id AND c.season = m.season
-    WHERE NOT m.is_void
+    WHERE NOT m.is_void AND NOT m.is_playoff
     UNION
     SELECT m.season, c.conference, m.away_club_id, m.date
     FROM stg_matches m
     JOIN stg_clubs c ON c.club_id = m.away_club_id AND c.season = m.season
-    WHERE NOT m.is_void
+    WHERE NOT m.is_void AND NOT m.is_playoff
 ),
 date_grid AS (
     SELECT DISTINCT season, conference, date FROM fixtures

@@ -583,3 +583,40 @@ def test_match_date_is_taken_in_the_configured_timezone(
     assert m1() == (dt.date(2024, 3, 3), 0, True, dt.datetime(2024, 3, 3, 2, 30))
     monkeypatch.setattr(config, "MATCH_TZ", "America/Los_Angeles")
     assert m1() == (dt.date(2024, 3, 2), 6, True, dt.datetime(2024, 3, 3, 2, 30))
+
+
+def test_playoff_rounds_are_flagged_from_the_provider_round_id(
+    con: duckdb.DuckDBPyConnection,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tiny_raw: pd.DataFrame,
+    club_aliases: pd.DataFrame,
+    tiny_clubs: pd.DataFrame,
+) -> None:
+    """The season's largest round is the regular season; any other round is a playoff.
+
+    tiny_raw carries no roundID, so nothing is a playoff. Stamp five matches
+    with one round and the last with another, and the last is flagged.
+    """
+    import json
+
+    write_reference_csvs(tmp_path, monkeypatch, aliases=club_aliases, club_rows=tiny_clubs)
+    load_raw(con, tiny_raw)
+    runner.load_reference_tables(con)
+    runner.materialise(con, "stg_clubs")
+    runner.materialise(con, "stg_matches")
+    assert con.execute("SELECT count(*) FROM stg_matches WHERE is_playoff").fetchone() == (0,)
+    assert con.execute("SELECT count(*) FROM stg_matches WHERE round_id IS NULL").fetchone() == (6,)
+
+    stamped = tiny_raw.copy()
+    stamped["raw_json"] = [
+        json.dumps({**json.loads(js), "roundID": 900 if i < 5 else 901})
+        for i, js in enumerate(stamped["raw_json"])
+    ]
+    con.execute("DELETE FROM raw_matches")
+    load_raw(con, stamped)
+    runner.materialise(con, "stg_matches")
+    flagged = con.execute(
+        "SELECT match_id, round_id FROM stg_matches WHERE is_playoff ORDER BY match_id"
+    ).fetchall()
+    assert flagged == [("m6", "901")]

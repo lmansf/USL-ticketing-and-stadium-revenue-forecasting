@@ -34,7 +34,14 @@ MODEL_DEPS: dict[str, tuple[str, ...]] = {
     "stg_weather": ("raw_weather",),
     "int_standings": ("stg_matches", "stg_clubs"),
     "int_stakes": ("int_standings", "stg_matches", "conference_structure", "ref_config"),
-    "mart_match_features": ("stg_matches", "stg_weather", "int_standings", "int_stakes", "derbies"),
+    "mart_match_features": (
+        "stg_matches",
+        "stg_weather",
+        "int_standings",
+        "int_stakes",
+        "derbies",
+        "ref_config",  # lag_max_gap_days
+    ),
     "mart_decay_curve": ("mart_match_features",),
 }
 
