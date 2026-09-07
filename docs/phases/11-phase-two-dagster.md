@@ -233,7 +233,24 @@ not render; the server is almost never the problem. In order:
 4. `pip show dagster dagster-webserver` must print the same version twice; if
    not, `pip install "dagster==X" "dagster-webserver==X"` with the `dagster`
    version.
-5. The browser console (F12, Console) names anything else.
+5. The browser console (F12, Console) names anything else. White in a private
+   window as well, with `/server_info` answering, means something on the
+   machine rewrites or blocks the page's scripts - an antivirus web shield
+   that scans local HTTP, or a browser policy - and the fix is its exclusion
+   list, not Dagster.
+
+**The UI is optional.** Everything the UI does for this project is one CLI
+command each, against the same instance in `DAGSTER_HOME`:
+
+```
+python -m dagster job execute -m usl.defs -j weekly          # Materialize all: every asset, every check, in order
+python -m dagster schedule start -m usl.defs weekly_tuesday  # turn the schedule on
+python -m dagster schedule list -m usl.defs                  # ... and see that it is RUNNING
+python make.py dagster                                       # keep this running: its daemon fires the schedule
+```
+
+The run log and `check_log` are written the same way, under the Dagster run
+id, so the tracker strip does not care which door the run came through.
 
 **What is deliberately not there.** No partitions (the data is one table per
 model, rebuilt whole), no IO managers (DuckDB is the store), no sensors. The

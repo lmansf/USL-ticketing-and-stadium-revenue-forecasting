@@ -483,7 +483,10 @@ the `.sh` in cron) per [docs/mvp/05-mvp-schedule.md](docs/mvp/05-mvp-schedule.md
 or run `make dagster` and turn on the `weekly_tuesday` schedule - one or the
 other, never both, since they write the same file. For Dagster, set `DAGSTER_HOME`
 to a directory that stays, or the run history is gone when the UI closes, and keep
-`dagster dev` running: the schedule fires from it. Set `USL_CURRENT_SEASON=2026`
+`dagster dev` running: the schedule fires from it. The UI is optional:
+`python -m dagster job execute -m usl.defs -j weekly` is Materialize all and
+`python -m dagster schedule start -m usl.defs weekly_tuesday` turns the schedule
+on, from the command line. Set `USL_CURRENT_SEASON=2026`
 in `.env` so the freshness check has something to be fresh about.
 
 ---
