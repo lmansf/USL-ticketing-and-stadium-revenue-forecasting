@@ -352,9 +352,12 @@ D3 edits `club_aliases.csv` in place and restores it byte for byte.
 - **The run log is written under the Dagster run id**, one row per asset as a
   stage, and every asset check writes its `check_log` row. The Tableau tracker
   strip reads the same tables whichever scheduler is in charge.
-- **Schedule** `weekly_tuesday`, `config.SCHEDULE_CRON` in `config.SCHEDULE_TZ`.
-  One scheduler at a time: turning the Dagster schedule on is the moment the
-  scheduled task is deleted.
+- **Schedule** `weekly_tuesday`, `config.SCHEDULE_CRON` in `config.SCHEDULE_TZ`,
+  Central by default like the match date (`USL_SCHEDULE_TZ` overrides). One
+  scheduler at a time: turning the Dagster schedule on is the moment the
+  scheduled task is deleted. `dagster dev` keeps its run history in a temporary
+  home unless `DAGSTER_HOME` points at a directory, so set it before the first
+  scheduled run or the history the UI exists for is lost at every restart.
 - **Not built:** partitions, IO managers, sensors. Whole-table rebuilds into one
   DuckDB file need none of them.
 

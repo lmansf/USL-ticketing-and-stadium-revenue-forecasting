@@ -365,7 +365,9 @@ WEATHER_ENABLED: bool = os.environ.get("USL_WEATHER_ENABLED", "1").strip().lower
 # --------------------------------------------------------------------------
 
 SCHEDULE_CRON: str = "0 6 * * 2"
-SCHEDULE_TZ: str = "UTC"
+# The zone the cron is read in: Central, the same zone as the match date, so
+# 06:00 is Tuesday morning where the league plays. USL_SCHEDULE_TZ overrides it.
+SCHEDULE_TZ: str = os.environ.get("USL_SCHEDULE_TZ", "").strip() or "America/Chicago"
 
 # Open-Meteo's free tier limits requests per minute, and weights a multi-year
 # archive range as many requests, so a backfill trips the limit every ten or so.
