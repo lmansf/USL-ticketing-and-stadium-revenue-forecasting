@@ -86,17 +86,30 @@ base AS (
       ON st.season = s.season AND st.conference = s.conference
     CROSS JOIN ref_config cfg
 ),
+line_points AS (
+    -- the points of the club sitting exactly on each line, per table-date.
+    -- A grouped aggregate joined back rather than a window over a CASE:
+    -- the same result, and a shape every DuckDB release binds the same way
+    -- (a window over CASE inside a chained CTE has tripped the binder on
+    -- some versions with an INTERNAL "failed to bind column reference")
+    SELECT
+        season,
+        conference,
+        date,
+        MAX(pts_before) FILTER (WHERE position = playoff_spots)              AS playoff_line_pts,
+        MAX(pts_before) FILTER (WHERE position = n_clubs - relegation_spots) AS relegation_line_pts
+    FROM base
+    GROUP BY season, conference, date
+),
 lines AS (
     SELECT
         b.*,
         b.fixtures_total - b.played_before AS matches_remaining,
-        MAX(CASE WHEN b.position = b.playoff_spots THEN b.pts_before END) OVER (
-            PARTITION BY b.season, b.conference, b.date
-        )                                  AS playoff_line_pts,
-        MAX(CASE WHEN b.position = b.n_clubs - b.relegation_spots THEN b.pts_before END) OVER (
-            PARTITION BY b.season, b.conference, b.date
-        )                                  AS relegation_line_pts
+        lp.playoff_line_pts,
+        lp.relegation_line_pts
     FROM base b
+    JOIN line_points lp
+      ON lp.season = b.season AND lp.conference = b.conference AND lp.date = b.date
 ),
 live AS (
     SELECT

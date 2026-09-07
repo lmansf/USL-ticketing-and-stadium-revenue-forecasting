@@ -234,6 +234,16 @@ no rows and moves no line. `all_conference_clubs_have_fixtures` reports those an
 fails only a fixtureless club in a conference that is playing. That is what lets
 the USL rows sit in the CSVs while the example season runs.
 
+**A DuckDB 1.5.3 binder bug, worked around in the SQL.** `int_stakes` originally
+took the points on each line with `MAX(CASE WHEN position = playoff_spots THEN
+pts_before END) OVER (PARTITION BY ...)` inside a chained CTE. DuckDB 1.5.3 alone
+fails to bind that with an INTERNAL "failed to bind column reference" error; 1.3.2,
+1.4.5, 1.5.0 to 1.5.2, 1.5.4 and 1.5.5 all run it. The line points are now a grouped
+aggregate joined back on the table-date, which every release binds the same way
+and which is the plainer statement of the intent anyway. Same rows, same values;
+the standings and feature tests did not change. If a query ever fails with an
+INTERNAL error, check the DuckDB version before the query.
+
 ## Phase 06 - features
 
 - **Lag windows cross season boundaries.** A club's first home match of a season
