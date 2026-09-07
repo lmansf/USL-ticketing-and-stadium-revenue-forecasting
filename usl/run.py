@@ -499,12 +499,18 @@ def cmd_league_list(args: argparse.Namespace, ctx: RunContext) -> int:
     """
     try:
         leagues = list_leagues(force=args.force)
+    except NoSubscriptionError as exc:
+        print(f"league-list needs a key: {exc}", file=sys.stderr)
+        return EXIT_FAILED
+    if leagues.empty:
+        print("league-list: the response carried no leagues")
+        return EXIT_OK
     if args.filter:
+        # The full list is every league the key can see - thousands of rows.
         needle = args.filter.strip().lower()
-        text = leagues[["name", "league_name", "country"]].astype(str).apply(
-            lambda col: col.str.lower()
-        )
-        leagues = leagues[text.apply(lambda col: col.str.contains(needle, regex=False)).any(axis=1)]
+        text = leagues[["name", "league_name", "country"]].astype(str)
+        hit = text.apply(lambda col: col.str.lower().str.contains(needle, regex=False)).any(axis=1)
+        leagues = leagues[hit]
         if leagues.empty:
             print(
                 f"league-list: no league-season matches {args.filter!r}. The list is every "
@@ -512,12 +518,6 @@ def cmd_league_list(args: argparse.Namespace, ctx: RunContext) -> int:
                 "FootyStats account, or is named differently - try a shorter filter."
             )
             return EXIT_OK
-    except NoSubscriptionError as exc:
-        print(f"league-list needs a key: {exc}", file=sys.stderr)
-        return EXIT_FAILED
-    if leagues.empty:
-        print("league-list: the response carried no leagues")
-        return EXIT_OK
     print(leagues.to_string(index=False))
     print(f"{len(leagues)} league-season row(s)")
     return EXIT_OK
