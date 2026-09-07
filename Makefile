@@ -111,6 +111,7 @@ install-dagster:
 .PHONY: dagster
 dagster:
 	@echo "Dagster UI: http://127.0.0.1:$(DAGSTER_PORT) - wait for 'Serving dagster-webserver' below (about 30s)"
+	$(PYTHON) -c "import os; d = os.environ.get('DAGSTER_HOME'); d and os.makedirs(d, exist_ok=True); print('DAGSTER_HOME:', d or '(unset: run history is kept in a temporary folder)')"
 	$(PYTHON) -m dagster dev -m usl.defs -h 127.0.0.1 -p $(DAGSTER_PORT)
 
 .PHONY: test
