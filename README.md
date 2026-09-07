@@ -185,6 +185,12 @@ Verify the install:
 make check         # lint + typecheck + test. Green on a fresh clone
 ```
 
+No `make` on your machine? Windows does not ship it. `python make.py <target>`
+reads the Makefile and runs the same lines, so every `make` command in this
+README works as `python make.py check`, `python make.py backfill`, and so on.
+Or run the underlying commands directly: each target is one `python -m` line,
+listed by `python make.py help`.
+
 Then run the pipeline from the archive:
 
 ```

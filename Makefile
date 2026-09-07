@@ -1,8 +1,9 @@
 # USL attendance forecasting - task runner.
 #
-# Windows users: make is not installed by default. Every target below is a
-# thin wrapper around a python -m command; run those directly, or use
-# scripts/run_weekly.ps1. See docs/mvp/05-mvp-schedule.md.
+# No make on your machine (Windows, say)? `python make.py <target>` reads this
+# file and runs the same recipe lines, e.g. `python make.py check`. Every
+# target is a thin wrapper around a python -m command, so running those
+# directly works too. See the README's Setup section.
 
 PYTHON ?= python
 DB     ?= data/usl.duckdb
@@ -110,15 +111,15 @@ test:
 
 .PHONY: lint
 lint:
-	$(PYTHON) -m ruff check usl tests demo scripts
+	$(PYTHON) -m ruff check usl tests demo scripts make.py
 
 .PHONY: format
 format:
-	$(PYTHON) -m ruff format usl tests demo scripts
+	$(PYTHON) -m ruff format usl tests demo scripts make.py
 
 .PHONY: typecheck
 typecheck:
-	$(PYTHON) -m mypy usl
+	$(PYTHON) -m mypy usl make.py
 
 .PHONY: check
 check: lint typecheck test
