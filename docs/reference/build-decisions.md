@@ -190,8 +190,8 @@ Seven models, in order: `stg_clubs`, `stg_matches`, `stg_weather`, `int_standing
 three: `int_stakes` keeps the playoff-line arithmetic out of the mart so it can be
 read on its own, `mart_decay_curve` is the dead-rubber curve as a table so it can
 be exported and plotted, and `stg_weather` (phase two) is the typed view of
-`raw_weather`, present and empty until the weather backfill is archived so the
-mart's join is always well-formed.
+`raw_weather`, created empty before the weather stage has ever run so the mart's
+join is always well-formed.
 
 Tunables reach the static SQL through a one-row `ref_config` table (COVID window,
 match timezone, relegation assumption, playoff fallback) built by
@@ -383,10 +383,15 @@ D3 edits `club_aliases.csv` in place and restores it byte for byte.
   season's numbers stable when weather is disabled, and it also catches
   `same_fixture_last_season` on a single-season dataset, so the numbers moved
   once when the rule landed; the README carries the new ones.
-- **Off by default.** `USL_WEATHER_ENABLED` gates the stage. The archive-only run
-  and CI have no network and no archived weather, so the stage records a skip and
-  the weather columns are null. Once the backfill is archived on a connected
-  machine, an enabled run with nothing missing makes no request.
+- **On by default, now that the example season's weather is archived.** It was
+  off while the archive-only run had nothing to serve; the backfill (21 responses,
+  5,316 club-days) is committed, an enabled run with nothing missing makes no
+  request, and the default flipped. `USL_WEATHER_ENABLED=0` still records a skip
+  and leaves the weather columns null.
+- **Weather moved the numbers and not the conclusion.** With real weather Model A's
+  holdout MAE rose from 1,361 to 1,585 and Model B's fell from 1,421 to 1,415;
+  cloud cover is sixth by gain in both. On one season the family is noise, and the
+  README says so.
 - **No neutral-site list.** Every match is treated as played at the home club's
   ground for that date; the caveat is stated in phase 12. The list goes beside
   `derbies.csv` if it is ever needed.

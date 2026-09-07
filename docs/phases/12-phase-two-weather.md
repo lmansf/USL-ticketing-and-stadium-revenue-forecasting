@@ -1,12 +1,12 @@
 # Phase two - Weather features via Open-Meteo
 
-> **Status: built, off by default.** The client, the refresh, the stadium file,
-> the mart join, the checks and the feature family are all in, and every one is
-> tested against a fake Open-Meteo. What this environment could not do is reach
-> Open-Meteo, so the observed weather for the example season is not archived yet:
-> `USL_WEATHER_ENABLED=1 python -m usl.run weather` on a connected machine is the
-> one manual step, after which the responses are archived and the run needs no
-> network again. See [How it landed](#how-it-landed) at the end.
+> **Status: built.** The client, the refresh, the stadium file, the mart join,
+> the checks and the feature family are all in, every one tested against a fake
+> Open-Meteo, and the observed weather for the example season is archived under
+> `data/raw_archive/open-meteo-*` (21 responses, one per club and ground), so the
+> archive-only run joins real weather to every match with no network. The stage
+> is on by default; `USL_WEATHER_ENABLED=0` turns it off. See
+> [How it landed](#how-it-landed) at the end.
 
 ---
 
@@ -181,8 +181,16 @@ nine USL seasons a handful of relocated matches get the wrong weather and the
 wrong attendance interpretation. If it ever matters, the list goes beside
 `derbies.csv` in the same spirit.
 
-**Why it is off by default.** The archive-only run and CI have no network, and
-until the backfill has been run once on a connected machine there is no archived
-weather to serve. With the flag unset the stage records that it was skipped, the
-weather columns are null, and the model is exactly the model without weather.
-With the flag set and everything archived, no request is made.
+**Why it is on by default.** It was off until the example season's weather had
+been fetched once on a connected machine, because the archive-only run and CI
+have no network. That backfill is committed, so an enabled run with nothing
+missing makes no request, and the default flipped. `USL_WEATHER_ENABLED=0` still
+turns the stage off: it records a skip, the weather columns are null, and the
+model is exactly the model without weather.
+
+**What the example season showed.** Cloud cover ranks sixth by gain in both
+models, precipitation and minimum temperature behind it, wind last. Model A's
+holdout error rose by about 220 attendees when the five columns arrived and
+Model B's fell by six: five more columns on 304 training rows are five more ways
+to fit noise. The feature family earns its place on nine USL seasons or not at
+all, which is what a shared feature list is for.

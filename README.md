@@ -21,8 +21,8 @@ both models plus the naive baseline, extracts, the weekly command, seven demo
 scripts - runs end to end from the committed archive with no API key. Phase two
 is built as well: the same pipeline as a Dagster asset graph with the checks as
 blocking asset checks, and match-day weather from Open-Meteo as a shared feature
-family, off by default until its backfill has been archived on a connected
-machine (see [phase two](#phase-two-built)).
+family, with the example season's observed weather archived beside the match data
+so that run needs no network either (see [phase two](#phase-two-built)).
 
 It runs today on the one season the free FootyStats `example` key serves: **English
 Premier League 2018/19**, 380 matches, attendance on every one. That is exactly the
@@ -236,13 +236,13 @@ instructions are in [docs/mvp/05-mvp-schedule.md](docs/mvp/05-mvp-schedule.md).
 ## Results on the example season
 
 <!-- RESULTS_START -->
-Produced by `make backfill && make transform && make train && make export` on the archived EPL 2018/19 season (run date 2026-09-06). Numbers are EPL numbers; the point is that the machinery works end to end, not the values.
+Produced by `make backfill && make transform && make train && make export` on the archived EPL 2018/19 season (run date 2026-09-07). Numbers are EPL numbers; the point is that the machinery works end to end, not the values.
 
 | Table | Rows |
 |---|---|
 | `raw_matches` | 380 |
 | `stg_matches` | 380 |
-| `stg_weather` | 0 |
+| `stg_weather` | 5,316 |
 | `int_standings` | 2,180 |
 | `int_stakes` | 2,180 |
 | `mart_match_features` | 380 |
@@ -275,21 +275,21 @@ Holdout error (chronological split, last 20 percent of played matches):
 | Model | MAE (attendees) | MAPE | RMSE | Train | Test |
 |---|---|---|---|---|---|
 | `naive_club_mean` | 998 | 2.6% | 1,850 | 304 | 76 |
-| `baseline` | 1,360 | 3.3% | 2,690 | 304 | 76 |
-| `prorel` | 1,421 | 3.4% | 3,227 | 304 | 76 |
+| `baseline` | 1,585 | 3.7% | 3,215 | 304 | 76 |
+| `prorel` | 1,415 | 3.4% | 3,038 | 304 | 76 |
 
 Run-to-run noise across seeds (`model_variance`), the floor the A-to-B gap has to clear:
 
 | Model | Min MAE | Max MAE | Seeds |
 |---|---|---|---|
-| `baseline` | 1,360 | 1,467 | 4 |
-| `prorel` | 1,116 | 1,421 | 4 |
+| `baseline` | 1,585 | 1,716 | 4 |
+| `prorel` | 1,415 | 1,670 | 4 |
 
-Top five features by gain, `baseline`: `home_gate_ma5` 160,567,328, `last_home_gate` 118,736,288, `home_gate_ma3` 43,325,168, `opponent_club_id` 9,121,513, `day_of_week` 4,015,585
+Top five features by gain, `baseline`: `last_home_gate` 218,511,120, `home_gate_ma5` 195,801,728, `home_gate_ma3` 84,629,912, `opponent_club_id` 9,923,358, `matches_remaining` 5,723,785
 
-Top five features by gain, `prorel`: `last_home_gate` 213,088,672, `home_gate_ma5` 165,036,528, `home_gate_ma3` 60,139,072, `opponent_club_id` 8,967,534, `rank_before` (pro-rel) 8,472,666
+Top five features by gain, `prorel`: `home_gate_ma5` 292,883,520, `last_home_gate` 250,072,000, `home_gate_ma3` 91,457,912, `rank_before` (pro-rel) 12,590,566, `opponent_club_id` 10,316,983
 
-Features the pro-rel model never split on (logged as zero, not absent): `is_final_home_match`, `is_season_opener`
+Features the pro-rel model never split on (logged as zero, not absent): `is_final_home_match`, `is_mathematically_live`, `is_season_opener`, `matches_since_elimination`
 
 The dead-rubber decay curve (`mart_decay_curve`), attendance on eliminated-club home matches indexed to each club-season's own pre-elimination mean. Elimination here means out of the top-four race, the EPL's upside-stakes line:
 
@@ -308,21 +308,28 @@ This is exercise 7.2 answered on the data actually in hand, and the answer is th
 one the guide predicts for a single season.
 
 - **The naive baseline wins.** The club's mean home gate beats both XGBoost models
-  by 360 to 420 attendees of MAE. With one season, the lag features are the club
+  by 420 to 590 attendees of MAE. With one season, the lag features are the club
   mean with noise added, and 304 training rows are not enough for a tree model to
-  recover the calendar and opponent effects on top of that. This is the expected
-  outcome, and it is why the first graduation step is backfilling more seasons.
-- **The A-to-B gap is noise.** Model A beats Model B by 61 attendees on the primary
-  seed. Re-trained under four seeds, Model B ranges over 305 attendees and its best
-  seed beats every seed of Model A. There is no finding on the headline question
-  yet, and saying so is the point of logging the variance.
-- **The stakes features barely register.** `rank_before` is the only pro-rel feature
-  in the top five by gain, in fifth place. Two features were never split on, the
-  season-boundary flags, because with one season each fires on exactly twenty rows.
-  Six more never reached the model at all: `same_fixture_last_season`, because there
-  is no previous season, and the five weather columns, because the weather backfill
-  has not been archived yet. A feature that is null on every training row is dropped
-  before training rather than passed in as a constant.
+  recover the calendar, opponent and weather effects on top of that. This is the
+  expected outcome, and it is why the first graduation step is backfilling more
+  seasons.
+- **The A-to-B gap is noise.** Model B beats Model A by 170 attendees on the
+  primary seed. Re-trained under four seeds, Model B ranges over 255 attendees and
+  Model A over 131, and the two ranges overlap. There is no finding on the headline
+  question yet, and saying so is the point of logging the variance.
+- **Weather is in, and on one season it is noise.** Cloud cover ranks sixth by gain
+  in both models, with precipitation and the day's minimum temperature behind it
+  and wind last. Model A's holdout error rose by about 220 attendees when the five
+  columns arrived and Model B's fell by six. Five more columns on 304 rows are five
+  more ways to fit noise; the family earns its place on nine USL seasons or not at
+  all, which is exactly what the shared feature list is for.
+- **The stakes features barely register.** `rank_before` is fourth by gain in
+  Model B and the two line distances follow it, but `is_mathematically_live` and
+  `matches_since_elimination` were never split on, and neither were the two
+  season-boundary flags, which with one season each fire on exactly twenty rows.
+  `same_fixture_last_season` never reached the model at all: with no previous
+  season it is null on every row, and a feature null on every training row is
+  dropped before training rather than passed in as a constant.
 - **No dead-rubber decay in this league, on this line.** Clubs out of the top-four
   race draw 102 percent of their own pre-elimination gate, flat across the tail. In
   the EPL a club out of the Champions League race is usually still fighting for
@@ -330,16 +337,19 @@ one the guide predicts for a single season.
   "nothing at stake" condition the curve is meant to measure barely exists here.
   The machinery is the deliverable; the curve on USL data is the finding.
 
-These numbers moved once, when the all-null rule landed with phase two: before it,
-`same_fixture_last_season` went into XGBoost as an all-null column, which changed
-which columns the 0.8 column subsample drew. The models are the same models; the
-conclusion did not change.
+These numbers have moved twice since the first write-up: once when the all-null
+rule landed with phase two, which stopped `same_fixture_last_season` going in as an
+all-null column and changed which columns the 0.8 column subsample drew, and once
+when the example season's weather was archived and the five weather columns became
+real inputs. The models are the same models; the conclusion did not change.
 
 What the run does prove: the pipeline lands the data, reconstructs standings that
 match the published table exactly, builds every feature without leakage (the
 `no_future_leakage` check recomputes the standings independently on every run),
-trains both models on identical rows, and records enough per-run history that the
-comparison can be read against noise instead of against a single point estimate.
+joins observed match-day weather to every one of the 380 rows from an archive that
+needs no network, trains both models on identical rows, and records enough per-run
+history that the comparison can be read against noise instead of against a single
+point estimate.
 <!-- RESULTS_END -->
 
 ---
@@ -452,10 +462,10 @@ licence, and a machine that stays on.
 strip in Tableau Public against `tableau/extracts/*.csv`; start the 14-day Desktop
 trial only for the live connection and the video.
 
-**The weather backfill.** On any machine that can reach Open-Meteo:
-`USL_WEATHER_ENABLED=1 make weather`, then commit `data/raw_archive/open-meteo-*`.
-Twenty-one requests for the example season, no key. Keep the flag set in `.env`
-from then on; the weekly run tops up observations and forecasts.
+**Weather for the USL seasons.** The example season's weather is archived. After
+the USL backfill, run `make weather` once on a machine that can reach Open-Meteo
+and commit `data/raw_archive/open-meteo-*`: one request per club and ground, no
+key. The weekly run tops up observations and forecasts from then on.
 
 **The scheduler.** Either register `scripts/run_weekly.ps1` in Task Scheduler (or
 the `.sh` in cron) per [docs/mvp/05-mvp-schedule.md](docs/mvp/05-mvp-schedule.md),
@@ -486,11 +496,10 @@ the source of truth.
   every EPL and USL club with validity ranges where a club moved. Five weather
   features join both models; `weather_source` and the forecast horizon ride along
   so a forecast is never mistaken for an observation, and a check fails the run
-  if a played match keeps forecast weather. It is off by default: this
-  environment could not reach Open-Meteo, so the example season's weather is not
-  archived yet. Set `USL_WEATHER_ENABLED=1` and run `make weather` once on a
-  connected machine, commit `data/raw_archive/open-meteo-*`, and the features fill
-  in with no further network use.
+  if a played match keeps forecast weather. The example season's observed
+  weather is archived (21 responses, 5,316 club-days), so the archive-only run
+  joins real weather to all 380 matches without a network; `USL_WEATHER_ENABLED=0`
+  turns the stage off. `make weather` fetches only what is still missing.
 
 ---
 

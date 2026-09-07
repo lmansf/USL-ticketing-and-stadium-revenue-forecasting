@@ -27,10 +27,10 @@ from usl.transform import runner  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def archive_only(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No key, no current season, no weather: the run every clone can do."""
+    """No key, no current season, weather from the archive: the run every clone can do."""
     monkeypatch.setattr(config, "FOOTYSTATS_API_KEY", "")
     monkeypatch.setattr(config, "CURRENT_SEASON", None)
-    monkeypatch.setattr(config, "WEATHER_ENABLED", False)
+    monkeypatch.setattr(config, "WEATHER_ENABLED", True)
 
 
 def run_graph(
@@ -92,7 +92,10 @@ def test_the_whole_graph_materialises_the_example_season(tmp_path: Path) -> None
     ][0]
     assert set(metrics.metadata) >= {"mae_baseline", "mae_prorel", "mae_naive_club_mean"}
     weather = result.asset_materializations_for_node("raw_weather")[0]
-    assert weather.metadata["skipped"].value is True
+    assert weather.metadata["skipped"].value is False
+    assert weather.metadata["archive_requests"].value == 21  # all archive hits, no network
+    assert weather.metadata["club_days_missing"].value == 0
+    assert weather.metadata["rows"].value == 5316
 
     con = duckdb.connect(str(db), read_only=True)
     try:

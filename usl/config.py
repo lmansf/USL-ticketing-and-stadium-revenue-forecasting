@@ -320,19 +320,21 @@ ALLOWED_NULL_FEATURES: frozenset[str] = frozenset(
 # --------------------------------------------------------------------------
 # Phase two: weather via Open-Meteo
 #
-# Off by default. The archive-only run and CI have no network and, until the
-# backfill has been run once on a connected machine, no archived weather. With
-# it off the weather stage records that it was skipped and the weather columns
-# are null. Set USL_WEATHER_ENABLED=1 in .env after the backfill; from then on
-# a season already archived costs no request, and only forecasts for the
-# coming fixtures go to the network. See docs/phases/12-phase-two-weather.md
+# On by default. The example season's weather is archived under
+# data/raw_archive/open-meteo-*, so the archive-only run and CI fetch nothing
+# and the weather columns are populated. Set USL_WEATHER_ENABLED=0 in .env to
+# turn the stage off; it then records a skip and the weather columns are null.
+# With it on, a season already archived costs no request, and only the
+# observations and forecasts still missing go to the network. See
+# docs/phases/12-phase-two-weather.md
 # --------------------------------------------------------------------------
 
-WEATHER_ENABLED: bool = os.environ.get("USL_WEATHER_ENABLED", "").strip().lower() in (
-    "1",
-    "true",
-    "yes",
-    "on",
+WEATHER_ENABLED: bool = os.environ.get("USL_WEATHER_ENABLED", "1").strip().lower() not in (
+    "0",
+    "false",
+    "no",
+    "off",
+    "",
 )
 
 # --------------------------------------------------------------------------
