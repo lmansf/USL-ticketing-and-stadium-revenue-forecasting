@@ -43,6 +43,17 @@ EXAMPLE_SEASON_ID = 1625  # EPL 2018/19, served by the example key
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
+# The key lives in .env, which usl.config reads through python-dotenv. This
+# script decides its key before it imports the package, so it reads .env here
+# too - otherwise a filled-in .env is ignored and the example key is used, which
+# cannot see a USL season (FootyStats answers 417).
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(PROJECT_ROOT / ".env")
+except ImportError:  # pragma: no cover - python-dotenv is a project dependency
+    pass
+
 # Field names that plausibly carry a per-match gate figure. The API's naming is
 # not documented for this, so cast a wide net and report whatever is found.
 CANDIDATES = ("attendance", "crowd", "spectators", "attendance_count")
@@ -170,6 +181,9 @@ def main() -> int:
             print()
             print("A 401 means the key is wrong or the subscription has lapsed.")
             print("A 404 usually means the season id is wrong - get ids from league-list.")
+            print("A 417 means this key does not cover the season: the example key sees")
+            print("only season 1625, and a paid key only the leagues chosen on the account.")
+            print("If the line above says key=example, the .env key was not picked up.")
             print("A 403 on a tunnel/proxy line is your network blocking the host, not")
             print("the API rejecting you - try from an unproxied connection.")
             return 2

@@ -200,6 +200,11 @@ def _describe_http_failure(endpoint: str, status: int) -> str:
         text += " - the key does not cover this request, or a proxy is blocking the host"
     elif status == 404:
         text += " - the endpoint path or the season id is wrong"
+    elif status == 417:
+        text += (
+            " - the key does not cover this season: the example key sees only season "
+            f"{config.EXAMPLE_SEASON_ID}, and a paid key only the leagues chosen on the account"
+        )
     elif status == 429:
         text += " - the hourly request limit is used up; wait for it to reset"
     return text + ". Not retried: it would not improve with waiting."
