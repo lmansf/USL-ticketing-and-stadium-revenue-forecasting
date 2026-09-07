@@ -61,11 +61,29 @@ class OpenMeteoError(RuntimeError):
     """A request failed, the body was not JSON, or the API reported an error."""
 
 
+_last_request_at: float | None = None
+
+
+def _throttle() -> None:
+    """Space requests by config.WEATHER_REQUEST_DELAY_SECONDS."""
+    global _last_request_at
+    now = time.monotonic()
+    if _last_request_at is not None:
+        wait = config.WEATHER_REQUEST_DELAY_SECONDS - (now - _last_request_at)
+        if wait > 0:
+            _sleep(wait)
+    _last_request_at = time.monotonic()
+
+
 def _request(url: str, params: dict[str, Any]) -> str:
     """GET one URL, retrying transient failures only.
 
     Connection errors, timeouts and 5xx are retried with the FootyStats backoff
-    settings; a 4xx is an error in the request and is raised at once. Nothing
+    settings. A 429 - the free tier's per-minute limit, which a multi-year
+    archive range reaches quickly - is waited out for
+    config.WEATHER_RATE_LIMIT_WAIT_SECONDS and retried, up to
+    config.WEATHER_RATE_LIMIT_WAITS times, without spending an attempt. Any
+    other 4xx is an error in the request and is raised at once. Nothing
     secret is in play here (Open-Meteo has no key), so the URL may be logged.
 
     Args:
@@ -79,7 +97,11 @@ def _request(url: str, params: dict[str, Any]) -> str:
         OpenMeteoError: A non-transient failure, or the attempts ran out.
     """
     attempts = max(1, config.FETCH_MAX_ATTEMPTS)
-    for attempt in range(1, attempts + 1):
+    rate_limit_waits = 0
+    attempt = 0
+    while attempt < attempts:
+        attempt += 1
+        _throttle()
         try:
             response = requests.get(url, params=params, timeout=config.REQUEST_TIMEOUT_SECONDS)
         except (
@@ -103,6 +125,18 @@ def _request(url: str, params: dict[str, Any]) -> str:
                     attempts,
                 )
                 return response.text
+            if status == 429 and rate_limit_waits < config.WEATHER_RATE_LIMIT_WAITS:
+                rate_limit_waits += 1
+                log.warning(
+                    "%s: HTTP 429, the per-minute limit - waiting %.0fs (%d/%d) and retrying",
+                    url,
+                    config.WEATHER_RATE_LIMIT_WAIT_SECONDS,
+                    rate_limit_waits,
+                    config.WEATHER_RATE_LIMIT_WAITS,
+                )
+                _sleep(config.WEATHER_RATE_LIMIT_WAIT_SECONDS)
+                attempt -= 1  # a wait is not an attempt
+                continue
             if status < 500:
                 # Open-Meteo puts the reason in the body ({"error": true,
                 # "reason": ...}) and there is nothing secret in it, so quote it:

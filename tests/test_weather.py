@@ -96,6 +96,7 @@ def sandbox(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FakeRequest:
     fake = FakeRequest()
     monkeypatch.setattr(open_meteo, "_request", fake)
     monkeypatch.setattr(open_meteo, "_sleep", lambda _: None)
+    monkeypatch.setattr(open_meteo, "_last_request_at", None)
     return fake
 
 
@@ -192,6 +193,52 @@ def test_transient_failures_are_retried_and_4xx_is_not(
         open_meteo.fetch_archive(40.0, -80.0, dt.date(2024, 4, 1), dt.date(2024, 4, 1))
     assert len(refused.calls) == 1
     assert not any(p.name.endswith(".bad") for p in config.ARCHIVE_DIR.iterdir())
+
+
+def test_rate_limit_is_waited_out_and_requests_are_paced(
+    sandbox: FakeRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A 429 costs a minute, not the run; every request is spaced by the delay.
+
+    Open-Meteo weights a multi-year archive range as many requests, so the
+    backfill trips the per-minute limit every ten or so. A 429 is not an
+    attempt: it is waited out and the same request goes again.
+    """
+    import requests
+
+    from tests.test_footystats import FakeGet, FakeResponse
+
+    monkeypatch.setattr(open_meteo, "_request", REAL_REQUEST)
+    monkeypatch.setattr(config, "WEATHER_RATE_LIMIT_WAIT_SECONDS", 61.0)
+    monkeypatch.setattr(config, "WEATHER_RATE_LIMIT_WAITS", 2)
+    monkeypatch.setattr(config, "WEATHER_REQUEST_DELAY_SECONDS", 1.0)
+    monkeypatch.setattr(config, "FETCH_MAX_ATTEMPTS", 1)
+    slept: list[float] = []
+    monkeypatch.setattr(open_meteo, "_sleep", slept.append)
+    ticks = iter(range(10_000))
+    # a clock that advances a fifth of a second per reading: never a full delay
+    monkeypatch.setattr(open_meteo.time, "monotonic", lambda: 100.0 + 0.2 * next(ticks))
+    limited = json.dumps({"error": True, "reason": "Minutely API request limit exceeded"})
+    fake = FakeGet(
+        FakeResponse(429, limited),
+        FakeResponse(429, limited),
+        FakeResponse(200, daily_body(dt.date(2024, 3, 1), 1)),
+    )
+    monkeypatch.setattr(requests, "get", fake)
+    frame, _ = open_meteo.fetch_archive(40.0, -80.0, dt.date(2024, 3, 1), dt.date(2024, 3, 1))
+    assert len(frame) == 1 and len(fake.calls) == 3  # one attempt, two waits
+    assert [round(s) for s in slept if s >= 60] == [61, 61]
+    assert any(0 < s < 1 for s in slept)  # the pacing between the retries
+
+    # one wait more than allowed is the request's fault
+    monkeypatch.setattr(open_meteo, "_last_request_at", None)
+    refused = FakeGet(
+        FakeResponse(429, limited), FakeResponse(429, limited), FakeResponse(429, limited)
+    )
+    monkeypatch.setattr(requests, "get", refused)
+    with pytest.raises(open_meteo.OpenMeteoError, match="HTTP 429"):
+        open_meteo.fetch_archive(40.0, -80.0, dt.date(2024, 4, 1), dt.date(2024, 4, 1))
+    assert len(refused.calls) == 3
 
 
 def test_forecast_is_a_dated_snapshot_with_a_horizon(sandbox: FakeRequest) -> None:

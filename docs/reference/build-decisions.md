@@ -360,6 +360,13 @@ D3 edits `club_aliases.csv` in place and restores it byte for byte.
 
 ## Phase 12 - weather
 
+- **The per-minute limit is waited out.** Open-Meteo's free tier weights a
+  multi-year archive range as many requests, so the USL backfill trips its
+  per-minute limit every ten grounds or so. A 429 is not a failed attempt: the
+  client waits `config.WEATHER_RATE_LIMIT_WAIT_SECONDS` and sends the same
+  request again, up to `WEATHER_RATE_LIMIT_WAITS` times, and every request is
+  spaced by `WEATHER_REQUEST_DELAY_SECONDS`. Each response is committed to the
+  archive as it lands, so a run that does stop resumes where it left off.
 - **Archive-first, the FootyStats way.** Open-Meteo responses go through
   `usl.ingest.archive`: `.partial`, validate (JSON, no error envelope, a daily time
   series), atomic rename, `.bad` on failure. Observed weather is fetched once per

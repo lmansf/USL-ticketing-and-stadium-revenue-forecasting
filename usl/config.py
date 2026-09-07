@@ -367,6 +367,14 @@ WEATHER_ENABLED: bool = os.environ.get("USL_WEATHER_ENABLED", "1").strip().lower
 SCHEDULE_CRON: str = "0 6 * * 2"
 SCHEDULE_TZ: str = "UTC"
 
+# Open-Meteo's free tier limits requests per minute, and weights a multi-year
+# archive range as many requests, so a backfill trips the limit every ten or so.
+# A 429 is waited out and retried, up to this many times per request, and every
+# request is spaced by the delay. Neither costs anything but time.
+WEATHER_REQUEST_DELAY_SECONDS: float = 1.0
+WEATHER_RATE_LIMIT_WAIT_SECONDS: float = 61.0
+WEATHER_RATE_LIMIT_WAITS: int = 5
+
 # Open-Meteo's forecast horizon. A fixture further out than this has no weather
 # row until it comes inside the window.
 WEATHER_FORECAST_DAYS: int = 16

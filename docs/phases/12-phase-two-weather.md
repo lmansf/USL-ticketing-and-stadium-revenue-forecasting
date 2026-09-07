@@ -181,6 +181,13 @@ nine USL seasons a handful of relocated matches get the wrong weather and the
 wrong attendance interpretation. If it ever matters, the list goes beside
 `derbies.csv` in the same spirit.
 
+**The per-minute limit.** Open-Meteo weights a multi-year archive range as many
+requests, and the free tier's limit is per minute, so the USL backfill of about
+sixty grounds trips it every ten or so. A 429 is waited out for a minute and the
+request repeated; the run takes a few minutes longer and nothing is lost, because
+every response is archived as it lands and a rerun starts from the first missing
+ground.
+
 **Why it is on by default.** It was off until the example season's weather had
 been fetched once on a connected machine, because the archive-only run and CI
 have no network. That backfill is committed, so an enabled run with nothing
