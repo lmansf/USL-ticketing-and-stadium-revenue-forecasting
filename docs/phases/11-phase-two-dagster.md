@@ -218,6 +218,23 @@ was off is not made up, so the weekly command (`python make.py weekly`) is the
 manual catch-up. `dagster-daemon run` and `dagster-webserver` are the same two
 halves as separate services when the machine is a server.
 
+**A white screen in the browser** means the page was served and the app did
+not render; the server is almost never the problem. In order:
+
+1. The terminal must have printed `Serving dagster-webserver on
+   http://127.0.0.1:3000`. Startup takes about thirty seconds, and there is
+   nothing to load before that line; a traceback instead of it is the answer.
+2. Open `http://127.0.0.1:3000/server_info`. One JSON line with three matching
+   versions means the server is fine and the browser is the problem: hard
+   refresh (Ctrl+F5), then a private window, since a stale bundle and an
+   extension that blocks scripts are the usual causes, then another browser.
+3. No JSON, or someone else's page, means another program owns port 3000. Use
+   `make dagster DAGSTER_PORT=3050` and open that port instead.
+4. `pip show dagster dagster-webserver` must print the same version twice; if
+   not, `pip install "dagster==X" "dagster-webserver==X"` with the `dagster`
+   version.
+5. The browser console (F12, Console) names anything else.
+
 **What is deliberately not there.** No partitions (the data is one table per
 model, rebuilt whole), no IO managers (DuckDB is the store), no sensors. The
 guide's layout put staging and marts in separate files; they are one file here

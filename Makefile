@@ -7,6 +7,8 @@
 
 PYTHON ?= python
 DB     ?= data/usl.duckdb
+# Port for the Dagster UI: `make dagster DAGSTER_PORT=3050` when 3000 is taken.
+DAGSTER_PORT ?= 3000
 
 .PHONY: help
 help:
@@ -103,7 +105,8 @@ install-dagster:
 
 .PHONY: dagster
 dagster:
-	$(PYTHON) -m dagster dev -m usl.defs
+	@echo "Dagster UI: http://127.0.0.1:$(DAGSTER_PORT) - wait for 'Serving dagster-webserver' below (about 30s)"
+	$(PYTHON) -m dagster dev -m usl.defs -h 127.0.0.1 -p $(DAGSTER_PORT)
 
 .PHONY: test
 test:
