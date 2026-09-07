@@ -2,11 +2,11 @@
 
 > **Status: built.** The client, the refresh, the stadium file, the mart join,
 > the checks and the feature family are all in, every one tested against a fake
-> Open-Meteo, and the observed weather for the example season is archived under
-> `data/raw_archive/open-meteo-*` (21 responses, one per club and ground), so the
-> archive-only run joins real weather to every match with no network. The stage
-> is on by default; `USL_WEATHER_ENABLED=0` turns it off. See
-> [How it landed](#how-it-landed) at the end.
+> Open-Meteo, and the observed weather for the example season and for every USL
+> ground is archived under `data/raw_archive/open-meteo-*` (74 responses, one per
+> club and ground, 94,048 club-days), so the archive-only run joins real weather
+> to every match with no network. The stage is on by default;
+> `USL_WEATHER_ENABLED=0` turns it off. See [How it landed](#how-it-landed).
 
 ---
 

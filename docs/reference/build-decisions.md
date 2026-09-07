@@ -464,14 +464,23 @@ D3 edits `club_aliases.csv` in place and restores it byte for byte.
   on the nine seasons all 264 totals and all 181 regular-season group rows agree.
   The same comparison runs in `tests/test_usl_archive.py`, so a reference-file
   edit that moves a table is caught.
-- **What the first USL run showed.** Both XGBoost models beat the naive club mean
-  by about 400 attendees on the holdout and on every expanding-window fold. Model
-  B beats Model A by four attendees on the holdout, inside a seed spread of 20 to
-  40, and wins all four folds by 8 to 28: consistent in direction, small in size,
-  not yet outside the noise on any single split. Only 69 of 2,061 gated
-  regular-season home matches were played after mathematical elimination, because
-  eight of twelve qualify, so the decay curve has nothing to draw; that absence is
-  the thesis. The README carries the figures.
+- **What the USL runs showed.** Both XGBoost models beat the naive club mean by
+  about 400 attendees on the holdout and on every expanding-window fold. The
+  A-to-B gap is inside the noise, and the two runs prove it between them: without
+  weather Model B won all four folds by 8 to 28; with the five weather columns in,
+  Model A wins all four by 8 to 52, and the holdout gap is one attendee against
+  seed spreads of 38 and 65. Five shared columns flipped the direction. Only 69 of
+  2,061 gated regular-season home matches were played after mathematical
+  elimination, because eight of twelve qualify, so the decay curve has nothing to
+  draw; that absence is the thesis. The README carries the figures.
+- **Weather for every USL ground is archived.** 53 responses for 52 clubs
+  (Louisville City twice, two grounds), 88,732 club-days, fetched in one run that
+  waited out the per-minute limit five times; every one of the 4,194 home
+  fixtures reads an observation and the archive-only run makes no request. On
+  nine seasons the weather family stays minor: no weather column reaches the top
+  ten by gain in either model, and the holdout MAE moved by four attendees in
+  each direction. Rain on a match day is a real effect; it is a small one next to
+  who is playing and what they drew last time.
 - **The current season is a deployment setting.** `USL_CURRENT_SEASON` in `.env`
   on the machine that runs the Tuesday job, not a committed constant: it is a fact
   about where the pipeline runs, and committing it would make every clone's

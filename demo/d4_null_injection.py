@@ -28,7 +28,6 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -79,15 +78,15 @@ def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
 def scratch_database(directory: Path) -> Path:
     """A private copy of the database with a green mart, so the real one is untouched."""
     scratch = directory / "usl_demo.duckdb"
-    if config.DB_PATH.exists():
-        shutil.copyfile(config.DB_PATH, scratch)
-        print(f"copied {config.DB_PATH} to {scratch}")
-    else:
-        print(f"{config.DB_PATH} does not exist yet - building the scratch copy from the archive")
-        result = run_cli("backfill", "--db", str(scratch))
-        if result.returncode != 0:
-            print(result.stderr)
-            raise SystemExit("could not build the scratch database")
+    # Always built from the example archive, never copied from data/usl.duckdb:
+    # that file holds whatever league was last loaded (the USL seasons, once
+    # they are in), and every scenario here is written against the example
+    # season the pipeline was built on.
+    print("building the scratch copy from the example season's archive")
+    result = run_cli("backfill", "--db", str(scratch))
+    if result.returncode != 0:
+        print(result.stderr)
+        raise SystemExit("could not build the scratch database")
     result = run_cli("transform", "--db", str(scratch))
     if result.returncode != 0:
         print(result.stderr)

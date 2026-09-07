@@ -25,7 +25,6 @@ Doc: docs/phases/09-break-and-fix.md
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -36,8 +35,6 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 import duckdb  # noqa: E402
-
-from usl import config  # noqa: E402
 
 # Runs in a second process: takes the write lock and keeps it until killed.
 HOLDER = """
@@ -84,15 +81,15 @@ def show(lines: list[str]) -> None:
 def scratch_database(directory: Path) -> Path:
     """A private copy of the database to lock, so the real one is never touched."""
     scratch = directory / "usl_demo.duckdb"
-    if config.DB_PATH.exists():
-        shutil.copyfile(config.DB_PATH, scratch)
-        print(f"copied {config.DB_PATH} to {scratch}")
-    else:
-        print(f"{config.DB_PATH} does not exist yet - building the scratch copy from the archive")
-        result = run_cli("backfill", "--db", str(scratch))
-        if result.returncode != 0:
-            print(result.stderr)
-            raise SystemExit("could not build the scratch database")
+    # Always built from the example archive, never copied from data/usl.duckdb:
+    # that file holds whatever league was last loaded (the USL seasons, once
+    # they are in), and every scenario here is written against the example
+    # season the pipeline was built on.
+    print("building the scratch copy from the example season's archive")
+    result = run_cli("backfill", "--db", str(scratch))
+    if result.returncode != 0:
+        print(result.stderr)
+        raise SystemExit("could not build the scratch database")
     return scratch
 
 

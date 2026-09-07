@@ -9,6 +9,7 @@ to a reference file or a model that alters the USL result is caught here.
 
 from __future__ import annotations
 
+import datetime as dt
 import importlib.util
 import sys
 from collections.abc import Iterator
@@ -160,3 +161,26 @@ def test_lag_history_does_not_cross_the_empty_seasons(usl: duckdb.DuckDBPyConnec
         "AND last_home_gate IS NULL"
     ).fetchone()
     assert openers_null is not None and openers_null[0] >= 19
+
+
+def test_weather_for_every_usl_ground_is_archived(
+    usl: duckdb.DuckDBPyConnection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The refresh serves every USL club-day from the archive: no request, nothing missing.
+
+    Runs last in the module on purpose: it repopulates raw_weather and rebuilds
+    staging on the shared connection.
+    """
+    from usl.weather import open_meteo, refresh
+
+    def no_network(url: str, params: dict[str, object]) -> str:
+        raise AssertionError(f"a request left the archive: {url} {params}")
+
+    monkeypatch.setattr(open_meteo, "_request", no_network)
+    monkeypatch.setattr(config, "WEATHER_ENABLED", True)
+    stats = refresh.refresh(usl, today=dt.date(2026, 9, 7))
+    assert stats.archive_requests == 53  # 52 clubs, Louisville twice (two grounds)
+    assert stats.forecast_requests == 0
+    assert stats.club_days_needed == 4194
+    assert stats.club_days_missing == 0
+    assert stats.no_stadium == 0
