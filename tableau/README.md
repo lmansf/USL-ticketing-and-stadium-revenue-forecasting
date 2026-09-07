@@ -32,7 +32,14 @@ tableau/
 
 ## The extracts
 
-`python -m usl.run export` writes one CSV per table plus one joined file:
+`python -m usl.run export` writes one CSV per table plus one joined file.
+`make export-all` (or `USL_EXPORT_ALL=1` in `.env` for every run) writes every
+other table in the database beside them - raw, staging, reference, weather - as a
+complete placeholder source for building the workbook in Tableau Public before a
+live connection exists; `raw_matches.csv` leaves out the `raw_json` column, which
+lives in the archive. The curated files below are identical either way, so a
+workbook built against them keeps working when the switch to the live database
+is made.
 
 | File | Grain | Feeds |
 |---|---|---|

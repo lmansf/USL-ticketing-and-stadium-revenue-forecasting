@@ -173,6 +173,14 @@ Export the tables Tableau actually needs rather than everything - the mart, pred
 model metrics, feature importance, the standings, and the decay curve. Extracts are
 gitignored; the code that writes them is not.
 
+**As built, with one addition.** `make export-all` writes every table in the
+database as well, the curated ones first and unchanged, because the workbook gets
+built in Tableau Public against files before the live connection exists and the
+build goes faster with every object in reach. `raw_matches.csv` drops the
+`raw_json` column: it is the byte-faithful provider record, megabytes of text per
+season, and the archive is where it belongs. `USL_EXPORT_ALL=1` in `.env` makes
+every run do it, the Dagster asset included.
+
 ---
 
 ## What "done" looks like

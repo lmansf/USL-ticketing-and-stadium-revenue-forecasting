@@ -5,10 +5,11 @@ to on day 15 when the Tableau Desktop trial expires, and it is what makes this
 repo useful to someone who has no Tableau at all. Write it before you start the
 trial, not after.
 
-One CSV per table in config.EXTRACT_TABLES that exists, optionally a Hyper
-file beside each via pantab, plus predictions_with_band.csv: predictions joined
-to each run's holdout MAE so the club drill-down can shade a band without doing
-the join in Tableau. The band is historical residuals - predicted plus or minus
+One CSV per table in config.EXTRACT_TABLES that exists - or, with
+everything=True, per table in the database, the curated ones first - optionally
+a Hyper file beside each via pantab, plus predictions_with_band.csv: predictions
+joined to each run's holdout MAE so the club drill-down can shade a band without
+doing the join in Tableau. The band is historical residuals - predicted plus or minus
 the run's MAE - and the file says so in every row, because a plus-or-minus-one-
 MAE band and an 80% interval look identical on a chart and mean different things.
 
@@ -73,11 +74,50 @@ def read_for_export(con: duckdb.DuckDBPyConnection, sql: str) -> pd.DataFrame:
     return con.sql(f"SELECT {projection} FROM ({sql}) AS _export").df()
 
 
+def all_tables(con: duckdb.DuckDBPyConnection) -> list[str]:
+    """Every table and view in the main schema, curated extracts first.
+
+    config.EXTRACT_TABLES lead in their own order, so a workbook built against
+    the curated files sees no change; the rest follow by name. Names starting
+    with an underscore are scratch tables a test or a script left behind and
+    are not exported.
+
+    Args:
+        con: Open connection.
+
+    Returns:
+        Table names, each safe to quote into a SELECT.
+    """
+    rows = con.execute(
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema = 'main' AND table_name NOT LIKE '\\_%' ESCAPE '\\' "
+        "ORDER BY table_name"
+    ).fetchall()
+    present = [str(r[0]) for r in rows]
+    curated = [t for t in config.EXTRACT_TABLES if t in present]
+    return curated + [t for t in present if t not in config.EXTRACT_TABLES]
+
+
+def _columns_for_export(con: duckdb.DuckDBPyConnection, table: str) -> str:
+    """The select list for a table: '*' unless config.EXTRACT_OMITTED_COLUMNS names some."""
+    omitted = set(config.EXTRACT_OMITTED_COLUMNS.get(table, ()))
+    if not omitted:
+        return "*"
+    rows = con.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = 'main' AND table_name = ? ORDER BY ordinal_position",
+        [table],
+    ).fetchall()
+    kept = [str(r[0]) for r in rows if str(r[0]) not in omitted]
+    return ", ".join(f'"{c}"' for c in kept) or "*"
+
+
 def export_csv(con: duckdb.DuckDBPyConnection, table: str, out_dir: Path) -> Path:
     """Write one table to <out_dir>/<table>.csv.
 
     No index column, UTF-8, dates and timestamps as ISO text. Tableau Public
-    reads this without any type hints.
+    reads this without any type hints. Columns named in
+    config.EXTRACT_OMITTED_COLUMNS are left out (raw_matches.raw_json).
 
     Args:
         con: Open connection.
@@ -90,7 +130,7 @@ def export_csv(con: duckdb.DuckDBPyConnection, table: str, out_dir: Path) -> Pat
     _check_table_name(table)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    frame = read_for_export(con, f'SELECT * FROM "{table}"')
+    frame = read_for_export(con, f'SELECT {_columns_for_export(con, table)} FROM "{table}"')
     path = out_dir / f"{table}.csv"
     frame.to_csv(path, index=False, encoding="utf-8")
     log.info("export: wrote %s rows=%d", path, len(frame))
@@ -141,6 +181,7 @@ def export_all(
     out_dir: Path | None = None,
     *,
     hyper: bool = False,
+    everything: bool = False,
 ) -> list[Path]:
     """Export every table Tableau needs, plus predictions_with_band.csv.
 
@@ -155,6 +196,10 @@ def export_all(
         hyper: Also write a .hyper beside each CSV. When pantab is missing the
             first failure is logged as a warning and the rest of the run is
             CSV-only; the CSVs are always written.
+        everything: Also write every other table in the database (all_tables),
+            so a workbook can be built in Tableau Public against a complete
+            placeholder source. The curated files are written first and are
+            the same either way.
 
     Returns:
         Paths written, for the run log.
@@ -163,7 +208,11 @@ def export_all(
     destination.mkdir(parents=True, exist_ok=True)
     paths: list[Path] = []
     write_hyper = hyper
-    for table in config.EXTRACT_TABLES:
+    tables: tuple[str, ...] | list[str] = config.EXTRACT_TABLES
+    if everything:
+        tables = all_tables(con)
+        log.info("export: --all, %d table(s) in the database", len(tables))
+    for table in tables:
         if not table_exists(con, table):
             log.info("export: table %s does not exist yet, skipped", table)
             continue

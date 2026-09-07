@@ -393,6 +393,9 @@ WEATHER_ARCHIVE_LAG_DAYS: int = 7
 # --------------------------------------------------------------------------
 
 # What Tableau needs, not everything. raw_matches has no place in a dashboard.
+# `python -m usl.run export --all` (or USL_EXPORT_ALL=1) writes every table in
+# the database as well, as a placeholder source for a workbook built in Tableau
+# Public before the live connection exists; the curated list still comes first.
 EXTRACT_TABLES: tuple[str, ...] = (
     "mart_match_features",
     "mart_decay_curve",
@@ -407,6 +410,20 @@ EXTRACT_TABLES: tuple[str, ...] = (
     "run_log",
     "check_log",
 )
+
+# Export every table in the database, not only EXTRACT_TABLES. Off by default;
+# the --all flag on the export command turns it on for one run.
+EXPORT_EVERYTHING: bool = os.environ.get("USL_EXPORT_ALL", "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+
+# Columns left out of an extract. raw_json is the byte-faithful provider record,
+# five megabytes of text per season with no use in a workbook; the archive under
+# data/raw_archive/ is where it lives.
+EXTRACT_OMITTED_COLUMNS: dict[str, tuple[str, ...]] = {"raw_matches": ("raw_json",)}
 
 
 def season_start(year: int) -> dt.date:

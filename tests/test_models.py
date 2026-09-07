@@ -667,6 +667,45 @@ def test_export_all_writes_existing_tables_and_the_band(
     assert band["run_date"].map(lambda v: bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", v))).all()
 
 
+def test_export_everything_writes_every_object_without_the_raw_json(
+    mart_con: duckdb.DuckDBPyConnection, tmp_path: Path
+) -> None:
+    """--all writes every table in the database, curated ones first, scratch tables
+    left out, and raw_matches without its raw_json column."""
+    train_all(mart_con, dt.date(2024, 9, 3))
+    mart_con.execute(
+        "CREATE TABLE raw_matches AS SELECT 'm1' AS match_id, 1625 AS season_id, "
+        "'{\"id\": 1}' AS raw_json, TIMESTAMP '2024-03-02 12:00:00' AS ingested_at"
+    )
+    mart_con.execute("CREATE TABLE stadiums AS SELECT 'club_a' AS club_id, 40.0 AS lat")
+    mart_con.execute("CREATE TABLE _scratch AS SELECT 1 AS x")
+
+    paths = export_all(mart_con, tmp_path, everything=True)
+    names = [p.name for p in paths]
+    objects = {
+        str(r[0])
+        for r in mart_con.execute(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = 'main'"
+        ).fetchall()
+    }
+    assert "_scratch" in objects and "_scratch.csv" not in names
+    assert set(names) == {f"{t}.csv" for t in objects if not t.startswith("_")} | {
+        f"{BAND_FILE_STEM}.csv"
+    }
+    curated = [t for t in config.EXTRACT_TABLES if f"{t}.csv" in names]
+    assert names[: len(curated)] == [f"{t}.csv" for t in curated]
+    assert names.index("raw_matches.csv") > len(curated) - 1
+
+    raw = pd.read_csv(tmp_path / "raw_matches.csv")
+    assert list(raw.columns) == ["match_id", "season_id", "ingested_at"]
+    assert raw.loc[0, "ingested_at"] == "2024-03-02 12:00:00"
+    assert pd.read_csv(tmp_path / "stadiums.csv").shape == (1, 2)
+
+    # the curated export is unchanged: the same files, none of the extras
+    curated_only = {p.name for p in export_all(mart_con, tmp_path / "curated")}
+    assert "raw_matches.csv" not in curated_only and "stadiums.csv" not in curated_only
+
+
 def test_export_csv_writes_dates_as_iso_text(
     mart_con: duckdb.DuckDBPyConnection, tmp_path: Path
 ) -> None:

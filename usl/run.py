@@ -276,7 +276,9 @@ def _stage_export(
     con: duckdb.DuckDBPyConnection, ctx: RunContext, args: argparse.Namespace
 ) -> None:
     with stage(con, ctx, "export") as meta:
-        paths = export_all(con, args.out_dir, hyper=args.hyper)
+        everything = bool(getattr(args, "all", False)) or config.EXPORT_EVERYTHING
+        paths = export_all(con, args.out_dir, hyper=args.hyper, everything=everything)
+        meta["export_everything"] = everything
         meta["rows_read"] = sum(_csv_rows(path) for path in paths if path.suffix == ".csv")
         _freshness(con, meta)
         log.info("export: %d file(s), %d rows in total", len(paths), meta["rows_read"])
@@ -626,6 +628,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--hyper",
         action="store_true",
         help="export: also write a .hyper beside each CSV (needs pantab).",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help=(
+            "export: every table in the database, not only the ones Tableau needs "
+            "(raw_json left out) - a placeholder source for Tableau Public. "
+            "USL_EXPORT_ALL=1 does the same for every run."
+        ),
     )
     # Hidden: demo D1 shows the lock failure in seconds rather than sitting
     # through the production retry window. Not for the scheduler.

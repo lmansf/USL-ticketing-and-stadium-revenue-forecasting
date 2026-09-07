@@ -25,6 +25,7 @@ help:
 	@echo "  make transform      Run the SQL layer: staging, intermediate, mart"
 	@echo "  make train          Train both models, write metrics and importance"
 	@echo "  make export         Write Tableau extracts to tableau/extracts/"
+	@echo "  make export-all     Every table in the database as CSV, a placeholder source for Tableau Public"
 	@echo "  make weather        Phase two: match-day weather from Open-Meteo (needs USL_WEATHER_ENABLED=1)"
 	@echo "  make weekly         The full Tuesday run: ingest, weather, transform, train, export"
 	@echo "  make dagster        Phase two: the same pipeline as a Dagster asset graph (UI on :3000)"
@@ -88,6 +89,10 @@ train:
 .PHONY: export
 export:
 	$(PYTHON) -m usl.run export --db $(DB)
+
+.PHONY: export-all
+export-all:
+	$(PYTHON) -m usl.run export --db $(DB) --all
 
 .PHONY: weather
 weather:
