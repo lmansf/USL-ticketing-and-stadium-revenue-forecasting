@@ -104,9 +104,13 @@ def _request(url: str, params: dict[str, Any]) -> str:
                 )
                 return response.text
             if status < 500:
+                # Open-Meteo puts the reason in the body ({"error": true,
+                # "reason": ...}) and there is nothing secret in it, so quote it:
+                # a rejected variable name or date is the fix in one line.
                 raise OpenMeteoError(
                     f"{url}: HTTP {status} for {params.get('latitude')},{params.get('longitude')} "
-                    f"{params.get('start_date', '')}..{params.get('end_date', '')}; not retried"
+                    f"{params.get('start_date', '')}..{params.get('end_date', '')}; not retried. "
+                    f"The API said: {_reason(response.text)}"
                 )
             reason = f"HTTP {status}"
         if attempt == attempts:
@@ -119,6 +123,17 @@ def _request(url: str, params: dict[str, Any]) -> str:
         )
         _sleep(delay)
     raise AssertionError("unreachable: the loop returns or raises")  # pragma: no cover
+
+
+def _reason(body: str) -> str:
+    """The API's reason for a rejection, from its error envelope, else the body's start."""
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        return body.strip()[:200] or "(empty body)"
+    if isinstance(payload, dict) and payload.get("reason"):
+        return str(payload["reason"])
+    return body.strip()[:200]
 
 
 def _coord(value: float) -> float:

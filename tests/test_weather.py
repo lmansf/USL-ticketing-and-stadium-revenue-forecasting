@@ -182,9 +182,13 @@ def test_transient_failures_are_retried_and_4xx_is_not(
     assert len(frame) == 1 and len(fake.calls) == 3
     assert all(c["url"] == open_meteo.ARCHIVE_URL for c in fake.calls)
 
-    refused = FakeGet(FakeResponse(400, json.dumps({"error": True, "reason": "bad"})))
+    refused = FakeGet(
+        FakeResponse(400, json.dumps({"error": True, "reason": "Cannot initialize daily variable"}))
+    )
     monkeypatch.setattr(requests, "get", refused)
-    with pytest.raises(open_meteo.OpenMeteoError, match="HTTP 400"):
+    with pytest.raises(
+        open_meteo.OpenMeteoError, match="HTTP 400.*Cannot initialize daily variable"
+    ):
         open_meteo.fetch_archive(40.0, -80.0, dt.date(2024, 4, 1), dt.date(2024, 4, 1))
     assert len(refused.calls) == 1
     assert not any(p.name.endswith(".bad") for p in config.ARCHIVE_DIR.iterdir())
