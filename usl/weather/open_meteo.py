@@ -11,6 +11,13 @@ Historical weather never changes, so an archive response is fetched once;
 a forecast changes every day, so it is archived as a dated snapshot and the
 row it produces carries its horizon.
 
+An observation file is keyed by location and date range, and the range asked
+for depends on what the database was missing at the time. A database rebuilt
+from scratch is missing everything, so its exact key was never archived; the
+refresh therefore serves a location from every archived file that covers the
+dates it needs (archived_observations) before it requests anything, and what
+it does request is only the uncovered remainder.
+
 See docs/phases/12-phase-two-weather.md
 """
 
@@ -19,8 +26,11 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+import re
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -277,6 +287,92 @@ def daily_frame(
     else:
         frame["forecast_horizon_days"] = pd.array([None] * len(dates), dtype="Int64")
     return frame
+
+
+@dataclass(frozen=True)
+class ArchivedObservations:
+    """One archived observation response for a location: its date range and file."""
+
+    start: dt.date
+    end: dt.date
+    path: Path
+
+    @property
+    def name(self) -> str:
+        return self.path.name
+
+    def covers(self, day: dt.date) -> bool:
+        return self.start <= day <= self.end
+
+
+_OBSERVATION_NAME = re.compile(
+    rf"^{re.escape(ARCHIVE_ENDPOINT)}"
+    r"_end_date_(?P<end>\d{4}-\d{2}-\d{2})"
+    r"_latitude_(?P<lat>-?[0-9.]+)"
+    r"_longitude_(?P<lon>-?[0-9.]+)"
+    r"_start_date_(?P<start>\d{4}-\d{2}-\d{2})\.json$"
+)
+
+
+def archived_observations(lat: float, lon: float) -> list[ArchivedObservations]:
+    """Every archived observation response for one location, oldest range first.
+
+    Read off the archive filenames, which carry the coordinates and the date
+    range that were requested (usl.ingest.archive.archive_path). Coordinates
+    are compared after the same rounding the request used, so a stadium row
+    with more decimals than the file still finds it.
+
+    Args:
+        lat: Latitude.
+        lon: Longitude.
+
+    Returns:
+        The usable files for the location, sorted by start date. Empty when
+        the archive holds nothing for it, and when there is no archive yet.
+    """
+    directory = Path(config.ARCHIVE_DIR)
+    if not directory.is_dir():
+        return []
+    wanted = (_coord(lat), _coord(lon))
+    found = []
+    for path in directory.glob(f"{ARCHIVE_ENDPOINT}_end_date_*.json"):
+        match = _OBSERVATION_NAME.match(path.name)
+        if match is None or path.stat().st_size == 0:
+            continue
+        try:
+            at = (_coord(float(match["lat"])), _coord(float(match["lon"])))
+            start = dt.date.fromisoformat(match["start"])
+            end = dt.date.fromisoformat(match["end"])
+        except ValueError:
+            continue
+        if at == wanted:
+            found.append(ArchivedObservations(start=start, end=end, path=path))
+    return sorted(found, key=lambda item: (item.start, item.end))
+
+
+def read_observations(item: ArchivedObservations) -> pd.DataFrame:
+    """The daily frame of one archived observation file.
+
+    Args:
+        item: From archived_observations.
+
+    Returns:
+        As daily_frame with source SOURCE_ARCHIVE.
+
+    Raises:
+        OpenMeteoError: The file no longer validates as a daily response. It
+            was validated before it was archived, so this means it was
+            changed on disk; the message names it.
+    """
+    payload = archive.read_file(item.path)
+    problem = _validate(payload)
+    if problem is not None:
+        raise OpenMeteoError(
+            f"{item.name} is in the archive but {problem}; it validated when it was "
+            f"archived, so it was changed on disk. Move it aside (rename it to "
+            f"{item.name}{archive.QUARANTINE_SUFFIX}) and rerun the weather stage."
+        )
+    return daily_frame(payload, source=SOURCE_ARCHIVE)
 
 
 def fetch_archive(

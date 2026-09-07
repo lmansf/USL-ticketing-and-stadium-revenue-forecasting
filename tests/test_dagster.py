@@ -93,7 +93,8 @@ def test_the_whole_graph_materialises_the_example_season(tmp_path: Path) -> None
     assert set(metrics.metadata) >= {"mae_baseline", "mae_prorel", "mae_naive_club_mean"}
     weather = result.asset_materializations_for_node("raw_weather")[0]
     assert weather.metadata["skipped"].value is False
-    assert weather.metadata["archive_requests"].value == 21  # all archive hits, no network
+    assert weather.metadata["archive_replayed"].value == 21  # served from the files, no network
+    assert weather.metadata["archive_requests"].value == 0
     assert weather.metadata["club_days_missing"].value == 0
     assert weather.metadata["rows"].value == 5316
 

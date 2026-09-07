@@ -18,7 +18,10 @@ Two rules keep observations and predictions apart:
 Requests are grouped: one archive call per club and ground covering the whole
 range of dates still missing, and one forecast call per club and ground for
 the fixtures inside the horizon. Nothing is requested twice - the responses
-are archived under data/raw_archive/.
+are archived under data/raw_archive/, and before anything is requested every
+archived observation file that covers a club's missing dates is replayed into
+raw_weather, so a database rebuilt from scratch is served from the archive
+however the ranges were grouped when they were fetched.
 
 See docs/phases/12-phase-two-weather.md
 """
@@ -48,7 +51,10 @@ class WeatherStats:
 
     Attributes:
         skipped: config.WEATHER_ENABLED was off; nothing was fetched.
-        archive_requests: Archive responses read, from disk or the network.
+        archive_replayed: Archived observation files replayed into raw_weather
+            because they cover dates a club was missing.
+        archive_requests: Archive responses read through the client for the
+            dates no archived file covered: an exact-key hit, or the network.
         forecast_requests: Forecast responses read, likewise.
         rows_archive: Club-days written from observations.
         rows_forecast: Club-days written from forecasts.
@@ -60,6 +66,7 @@ class WeatherStats:
     """
 
     skipped: bool = False
+    archive_replayed: int = 0
     archive_requests: int = 0
     forecast_requests: int = 0
     rows_archive: int = 0
@@ -74,6 +81,7 @@ class WeatherStats:
         """The run-log view: every count, plus the file list length."""
         return {
             "weather_skipped": self.skipped,
+            "weather_archive_replayed": self.archive_replayed,
             "weather_archive_requests": self.archive_requests,
             "weather_forecast_requests": self.forecast_requests,
             "weather_rows_archive": self.rows_archive,
@@ -239,6 +247,71 @@ def _groups(frame: pd.DataFrame) -> list[tuple[str, float, float, pd.DataFrame]]
     return out
 
 
+def _unobserved(needs: pd.DataFrame, latest_observable: dt.date) -> pd.DataFrame:
+    """The played home fixtures without an observation that the archive can have by now."""
+    return needs[
+        needs["is_played"].astype(bool)
+        & (needs["weather_source"] != open_meteo.SOURCE_ARCHIVE)
+        & (needs["date"] <= latest_observable)
+    ]
+
+
+def replay_archived(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    today: dt.date | None = None,
+    stats: WeatherStats | None = None,
+) -> WeatherStats:
+    """Serve played matches from archived observation files before any request is made.
+
+    An observation file is keyed by the range that was missing when it was
+    fetched, so the exact key a rebuilt database computes was never archived.
+    For each club and ground with played dates still unobserved, every
+    archived file for those coordinates that covers at least one of them is
+    read and written, observation over forecast, the same as a fresh response.
+    A file is replayed at most once per call, and only when it covers a date
+    that still lacks an observation after the files before it.
+
+    Args:
+        con: Open connection with write access; staging must be built.
+        today: The date to measure the archive lag from. Defaults to today.
+        stats: Accumulate into an existing WeatherStats.
+
+    Returns:
+        The stats.
+    """
+    on = today or dt.date.today()
+    stats = stats or WeatherStats()
+    ensure_weather_table(con)
+    latest_observable = on - dt.timedelta(days=config.WEATHER_ARCHIVE_LAG_DAYS)
+    wanted = _unobserved(weather_needs(con), latest_observable)
+    for club_id, lat, lon, rows in _groups(wanted):
+        missing = set(rows["date"])
+        for item in open_meteo.archived_observations(lat, lon):
+            covered = {day for day in missing if item.covers(day)}
+            if not covered:
+                continue
+            frame = open_meteo.read_observations(item)
+            written, upgraded = _upsert(
+                con, club_id, lat, lon, frame, source_file=item.name, overwrite_forecast=True
+            )
+            stats.archive_replayed += 1
+            stats.files.append(item.name)
+            stats.rows_archive += written
+            stats.rows_upgraded += upgraded
+            missing -= set(frame["date"])
+            log.info(
+                "weather replay %s %s..%s: %d day(s) written, %d forecast row(s) replaced (%s)",
+                club_id,
+                item.start,
+                item.end,
+                written,
+                upgraded,
+                item.name,
+            )
+    return stats
+
+
 def refresh_played_matches(
     con: duckdb.DuckDBPyConnection,
     *,
@@ -248,16 +321,17 @@ def refresh_played_matches(
 ) -> WeatherStats:
     """Replace missing or forecast weather with observations for played matches.
 
-    One archive request per club and ground, covering the earliest to the
-    latest played home date still without an observation, clipped to what the
-    archive can have (today minus config.WEATHER_ARCHIVE_LAG_DAYS). Every day
-    of the response is written, so a rescheduled fixture in the same range
-    already has its row.
+    First the archive is replayed (replay_archived), then one archive request
+    per club and ground covers the earliest to the latest played home date
+    still without an observation, clipped to what the archive can have (today
+    minus config.WEATHER_ARCHIVE_LAG_DAYS). Every day of the response is
+    written, so a rescheduled fixture in the same range already has its row.
 
     Args:
         con: Open connection with write access; staging must be built.
         today: The date to measure the archive lag from. Defaults to today.
-        force: Re-request archived responses.
+        force: Re-request archived responses; the replay is skipped so the
+            request covers the whole range and the archive is refreshed.
         stats: Accumulate into an existing WeatherStats.
 
     Returns:
@@ -269,11 +343,10 @@ def refresh_played_matches(
     needs = weather_needs(con)
     stats.no_stadium += int(needs["lat"].isna().sum())
     latest_observable = on - dt.timedelta(days=config.WEATHER_ARCHIVE_LAG_DAYS)
-    wanted = needs[
-        needs["is_played"].astype(bool)
-        & (needs["weather_source"] != open_meteo.SOURCE_ARCHIVE)
-        & (needs["date"] <= latest_observable)
-    ]
+    if not force:
+        replay_archived(con, today=on, stats=stats)
+        needs = weather_needs(con)
+    wanted = _unobserved(needs, latest_observable)
     for club_id, lat, lon, rows in _groups(wanted):
         start = min(rows["date"])
         end = min(max(rows["date"]), latest_observable)
@@ -379,10 +452,11 @@ def refresh(
     stats.club_days_missing = int(needs["weather_source"].isna().sum())
     log.info(
         "weather: %d home fixture(s), %d without a weather row afterwards, %d without a "
-        "stadium row; %d archive and %d forecast response(s) read",
+        "stadium row; %d archived file(s) replayed, %d archive and %d forecast response(s) read",
         stats.club_days_needed,
         stats.club_days_missing,
         stats.no_stadium,
+        stats.archive_replayed,
         stats.archive_requests,
         stats.forecast_requests,
     )

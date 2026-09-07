@@ -65,7 +65,7 @@ that is nearly right. The archived `league-tables` responses are the published
 answer, so the script compares every club-season two ways: the regular-season group
 tables where the provider has them, against the final snapshot row; and the
 provider's all-matches table, which includes playoff points, against the snapshot
-plus the playoff rows. On the nine archived USL seasons that is 264 club-seasons
+plus the playoff rows. On the ten archived USL seasons that is 289 club-seasons
 against the published totals and 181 against regular-season tables, with no
 mismatch. `tests/test_usl_archive.py` runs the same comparison in the test suite.
 

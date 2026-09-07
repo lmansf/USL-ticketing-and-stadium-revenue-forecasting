@@ -3,10 +3,11 @@
 > **Status: built.** The client, the refresh, the stadium file, the mart join,
 > the checks and the feature family are all in, every one tested against a fake
 > Open-Meteo, and the observed weather for the example season and for every USL
-> ground is archived under `data/raw_archive/open-meteo-*` (74 responses, one per
-> club and ground, 94,048 club-days), so the archive-only run joins real weather
-> to every match with no network. The stage is on by default;
-> `USL_WEATHER_ENABLED=0` turns it off. See [How it landed](#how-it-landed).
+> ground through August 2026 is archived under `data/raw_archive/open-meteo-*`
+> (99 observation responses, 98,142 club-days, and 19 forecast snapshots for the
+> fixtures ahead), so the archive-only run joins real weather to every match
+> with no network. The stage is on by default; `USL_WEATHER_ENABLED=0` turns it
+> off. See [How it landed](#how-it-landed).
 
 ---
 
@@ -102,7 +103,7 @@ you join, and someone will eventually forget the null branch.
 
 ## Neutral-site and relocated matches
 
-A small number of matches across nine seasons are played somewhere other than the home
+A small number of matches across ten seasons are played somewhere other than the home
 club's ground - hurricane relocations, stadium construction, one-off events at a larger
 venue. These get the wrong weather under the join above, and they also get the wrong
 attendance interpretation, because a neutral-site gate is not a home gate.
@@ -151,6 +152,21 @@ the fixture dates are written. On the example season that is twenty-one archive
 requests - twenty clubs, and Tottenham twice, because they moved from Wembley
 in April 2019 - for 380 matches.
 
+**The archive is served by coverage, not by exact key.** An observation file
+is named for the range that was missing when it was fetched, and that range
+depends on the state of the database: the first backfill asks for 2019 to 2025
+in one file, the next season's top-up for 2026 alone. A database rebuilt from
+scratch is missing everything, so the single range it would ask for was never
+archived, and the exact-key lookup that serves FootyStats responses would go
+to the network for weather the archive already holds. So before anything is
+requested, the refresh replays every archived observation file for the ground
+that covers a date still missing (`archived_observations` reads the key off
+the filename), and what it then requests is only the uncovered remainder: the
+dates no file has. On the committed archive that is every USL and EPL
+club-day with no request; `force=` skips the replay and re-requests the whole
+range, which is how a file is refreshed on purpose. The run log counts the two
+apart, `weather_archive_replayed` and `weather_archive_requests`.
+
 **Archive versus forecast, enforced.** `weather_source` and
 `forecast_horizon_days` are on every row and ride into the mart as non-feature
 columns. An observation overwrites a forecast; a forecast never overwrites an
@@ -177,7 +193,7 @@ which is why the example season's numbers moved when it landed (see the README).
 
 **Neutral-site matches.** No list is maintained. Every match is treated as
 played at the home club's ground for that date, and that is the caveat: over
-nine USL seasons a handful of relocated matches get the wrong weather and the
+ten USL seasons a handful of relocated matches get the wrong weather and the
 wrong attendance interpretation. If it ever matters, the list goes beside
 `derbies.csv` in the same spirit.
 
@@ -199,5 +215,5 @@ model is exactly the model without weather.
 models, precipitation and minimum temperature behind it, wind last. Model A's
 holdout error rose by about 220 attendees when the five columns arrived and
 Model B's fell by six: five more columns on 304 training rows are five more ways
-to fit noise. The feature family earns its place on nine USL seasons or not at
+to fit noise. The feature family earns its place on ten USL seasons or not at
 all, which is what a shared feature list is for.

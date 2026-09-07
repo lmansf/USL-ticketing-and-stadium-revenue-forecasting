@@ -147,7 +147,7 @@ The documentation ships in two parallel tracks. Same architecture, different dep
 | | [MVP track](docs/mvp/) | [Full track](docs/phases/) |
 |---|---|---|
 | Goal | Something running end to end, fast | The portfolio-grade build |
-| Ingest | One season, free `example` key | Nine seasons, backfill + weekly delta |
+| Ingest | One season, free `example` key | Ten seasons, backfill + weekly delta |
 | Idempotency | Primary key + upsert | Same, plus inserted/updated/unchanged logging |
 | SQL | Two tiers collapsed into one file | Three genuinely separate tiers |
 | Standings | League-wide rank | Conference rank, point-in-time, tie-broken, full field |
@@ -195,7 +195,7 @@ listed by `python make.py help`.
 Then run the pipeline from the archive:
 
 ```
-make backfill      # nine USL Championship seasons from data/raw_archive/, no key needed
+make backfill      # ten USL Championship seasons from data/raw_archive/, no key needed
 make transform     # seven SQL models, seventeen checks
 make train         # both models, the naive baseline, seed variance, CV
 make export        # CSVs into tableau/extracts/
@@ -241,19 +241,19 @@ instructions are in [docs/mvp/05-mvp-schedule.md](docs/mvp/05-mvp-schedule.md).
 
 ---
 
-## Results on the USL Championship, 2017 to 2025
+## Results on the USL Championship, 2017 to 2026
 
 <!-- RESULTS_START -->
-Produced by `make backfill && make transform && make train && make export` on the nine archived USL Championship seasons, 2017 to 2025 (run date 2026-09-07). Playoff matches are in the mart and out of the table; COVID-window rows are dropped before training.
+Produced by `make backfill && make transform && make train && make export` on the ten archived USL Championship seasons, 2017 to 2026 to date (run date 2026-09-07). Playoff matches are in the mart and out of the table; COVID-window rows are dropped before training.
 
 | Table | Rows |
 |---|---|
-| `raw_matches` | 4,203 |
-| `stg_matches` | 4,203 |
-| `stg_weather` | 88,732 |
-| `int_standings` | 21,947 |
-| `int_stakes` | 21,947 |
-| `mart_match_features` | 4,194 |
+| `raw_matches` | 4,578 |
+| `stg_matches` | 4,578 |
+| `stg_weather` | 92,853 |
+| `int_standings` | 23,640 |
+| `int_stakes` | 23,640 |
+| `mart_match_features` | 4,569 |
 | `mart_decay_curve` | 6 |
 
 Every check passed on the latest run:
@@ -282,20 +282,20 @@ Holdout error (chronological split, last 20 percent of played matches):
 
 | Model | MAE (attendees) | MAPE | RMSE | Train | Test |
 |---|---|---|---|---|---|
-| `naive_club_mean` | 1,468 | 41.5% | 2,249 | 1690 | 422 |
-| `baseline` | 1,065 | 32.6% | 1,796 | 1690 | 422 |
-| `prorel` | 1,066 | 31.9% | 1,810 | 1690 | 422 |
+| `naive_club_mean` | 1,593 | 351.7% | 2,330 | 1881 | 470 |
+| `baseline` | 1,046 | 227.3% | 1,759 | 1881 | 470 |
+| `prorel` | 1,040 | 215.6% | 1,755 | 1881 | 470 |
 
 Run-to-run noise across seeds (`model_variance`), the floor the A-to-B gap has to clear:
 
 | Model | Min MAE | Max MAE | Seeds |
 |---|---|---|---|
-| `baseline` | 1,031 | 1,096 | 4 |
-| `prorel` | 1,032 | 1,069 | 4 |
+| `baseline` | 1,040 | 1,056 | 4 |
+| `prorel` | 1,016 | 1,040 | 4 |
 
-Top five features by gain, `baseline`: `home_gate_ma5` 90,334,680, `home_gate_ma3` 38,482,352, `last_home_gate` 16,379,394, `is_final_home_match` 4,461,456, `is_season_opener` 3,774,888
+Top five features by gain, `baseline`: `home_gate_ma5` 98,167,608, `home_gate_ma3` 50,413,656, `last_home_gate` 8,806,992, `is_final_home_match` 4,613,592, `opponent_club_id` 3,446,796
 
-Top five features by gain, `prorel`: `home_gate_ma5` 116,343,440, `home_gate_ma3` 41,721,032, `last_home_gate` 18,681,536, `is_season_opener` 6,347,050, `is_final_home_match` 5,397,584
+Top five features by gain, `prorel`: `home_gate_ma5` 134,818,320, `home_gate_ma3` 36,892,128, `last_home_gate` 13,802,647, `is_season_opener` 5,445,246, `is_final_home_match` 4,279,539
 
 Features the pro-rel model never split on (logged as zero, not absent): `is_derby`
 
@@ -312,51 +312,64 @@ The dead-rubber decay curve (`mart_decay_curve`), attendance on eliminated-club 
 
 ### Reading the result honestly
 
-This is exercise 7.2 on nine seasons of the league the project is about, with
-match-day weather on every row, and the first run where the answer is not "one
-season is not enough".
+This is exercise 7.2 on ten seasons of the league the project is about, 2017 to
+the 2026 season in progress, with observed match-day weather on every played row
+and a forecast on the coming ones.
 
 - **Both models beat the naive baseline, by a lot.** The club's mean home gate is
-  400 attendees worse than either XGBoost model on the holdout, and worse on
-  every expanding-window fold. With 1,690 training rows the lag features stop
-  being the club mean with noise added and start carrying the calendar, the
-  opponent and the run of form. That is the demand model working.
-- **The A-to-B gap is noise, and this run proves it the hard way.** On the holdout
-  Model A beats Model B by one attendee, inside seed spreads of 38 and 65. Before
-  the weather columns went in, Model B won all four expanding-window folds by 8
-  to 28; with them in, Model A wins all four by 8 to 52. Five shared columns
-  flipped the direction, which is what a gap inside the noise does. The pro-rel
-  features are used - `points_from_relegation_line` and `rank_gap` are eighth
-  and ninth by gain in Model B - and there is no finding on the headline
-  question with no relegation in the data. Saying so is the point.
-- **Weather is real and small.** Precipitation is tenth by gain in Model A;
-  no weather column reaches Model B's top ten. Rain on a match day matters less
-  than who is playing and what the club drew last time, which is what you would
-  expect of a league where most fixtures are in summer.
-- **There are almost no dead rubbers.** Only 69 of 2,061 gated regular-season
+  about 550 attendees worse than either XGBoost model on the holdout, and worse
+  on every one of the five expanding-window folds, by 250 to 660. With 1,881
+  training rows the lag features stop being the club mean with noise added and
+  start carrying the calendar, the opponent and the run of form. That is the
+  demand model working.
+- **The A-to-B gap is noise.** Model B beats Model A by six attendees on the
+  holdout, inside seed spreads of 16 and 24; on the five folds Model A wins every
+  time, by 5 to 52. The pro-rel features are used - `rank_gap` and
+  `points_from_relegation_line` are ninth and tenth by gain in Model B - and there
+  is no finding on the headline question with no relegation in the data. Saying
+  so is the point.
+- **MAPE is broken by one row, and MAE is not.** New Mexico United v Orange
+  County SC on 13 June 2026 carries a gate of 8 against a club mean above 9,000;
+  both models predicted about 7,000, and that single row lifts the holdout MAPE
+  from 28 percent to over 200. Ten seasons hold four gates under 100 (50, 18, 2
+  and 8), all provider errors. They stay in until a minimum plausible gate is a
+  written-down decision, and MAE, which one row cannot move by more than 15
+  attendees, is the headline number.
+- **Weather is real and small.** Precipitation is eleventh by gain in both
+  models, and no weather column reaches either top ten. Rain on a match day
+  matters less than who is playing and what the club drew last time, which is
+  what you would expect of a league whose fixtures are mostly in summer.
+- **There are almost no dead rubbers.** Only 69 of 2,300 gated regular-season
   home matches were played after the club was mathematically out of the playoff
   race, because eight of twelve qualify and the arithmetic keeps a club alive
   until the last fortnight. The curve above is drawn on those 69 and shows
   nothing. This is the thesis in one number: a closed league with a low playoff
   line has no "nothing at stake" condition to measure. Pro-rel creates one.
-- **The attendance record has a hole.** The provider carries a gate on 94 to 100
+- **The attendance record has a hole.** The provider carries a gate on 93 to 100
   percent of 2017 to 2019 matches, on 12 percent of 2020, on none of 2021 to
-  2023, and on 57 to 61 percent of 2024 and 2025, missing by month rather than by
-  club. 2,147 labelled matches in all. The lag history restarts after a gap
-  longer than 400 days, so no 2024 opener inherits a 2019 crowd; the price is
-  that 2024's first home matches have null lags, which the model handles.
-  `is_derby` was never split on because no USL derby pairs are listed yet.
-- **The standings are exact.** Every one of the 264 club-season totals matches
+  2023, on 57 to 61 percent of 2024 and 2025, and on 85 percent of 2026 so far,
+  missing by month rather than by club. 2,386 labelled matches in all. The lag
+  history restarts after a gap longer than 400 days, so no 2024 opener inherits
+  a 2019 crowd; the price is that 2024's first home matches have null lags, which
+  the model handles. `is_derby` was never split on because no USL derby pairs
+  are listed yet.
+- **The standings are exact.** Every one of the 289 club-season totals matches
   the provider's published table once playoff points are added, and the
   regular-season group tables agree club for club for the 181 club-seasons the
   provider publishes them for. `scripts/verify_standings.py` checks it.
+- **The season in progress is live.** 281 matches played, 94 to play, and a
+  forecast on all 94 for both models. The 27 fixtures inside the 16-day horizon
+  carry forecast weather from the 7 September snapshot, the 67 beyond it none
+  yet, and the 12 matches played in the last week wait for the observation
+  archive to catch up. Each weekly run moves all three counts.
 
-What the run does prove: the pipeline lands nine seasons, reconstructs standings
+What the run does prove: the pipeline lands ten seasons, reconstructs standings
 that match the published tables exactly, keeps playoff matches out of the table
-and in the model, joins observed weather to every one of the 4,194 home fixtures
-from an archive that needs no network, builds every feature without leakage,
-trains both models on identical rows, and records enough per-run history that the
-comparison can be read against noise instead of against a single point estimate.
+and in the model, joins observed weather to every one of the 4,463 played home
+fixtures older than a week from an archive that needs no network, builds every
+feature without leakage, trains both models on identical rows, forecasts the
+fixtures still to come, and records enough per-run history that the comparison
+can be read against noise instead of against a single point estimate.
 <!-- RESULTS_END -->
 
 ---
@@ -438,20 +451,20 @@ it matters for west-coast Saturday nights.
 Three things need something this environment did not have: a paid key, a Tableau
 licence, and a machine that stays on.
 
-**The subscription month, what is done and what is left.** The nine USL seasons
-are pulled, archived and committed; every club id is mapped; the conference lists
-are verified against the provider's tables; the standings match the published
-ones club for club, 2026 to date included; the weather for every USL ground is
-archived through 2025; the transform, the training and the export run on them
-with no key. Left, in order of value:
+**The subscription month, what is done and what is left.** The ten USL seasons,
+2017 to 2026 to date, are pulled, archived and committed; every club id is
+mapped; the conference lists are verified against the provider's tables; the
+standings match the published ones club for club, 2026 to date included; the
+weather for every USL ground is archived to the last week of August 2026, with
+the forecasts for the coming fortnight beside it; the transform, the training
+and the export run on all of it with no key. Left, in order of value:
 
-1. **The 2026 season is loaded and waiting for its weather.** The season in
-   progress is in the archive and the database: 25 clubs, 281 played, 94 still
-   to play, and the run writes forecasts for those. Two things need a connected
-   machine: `make weather` once more, for the 2026 observations and the
-   forecasts for the coming fixtures, and `USL_CURRENT_SEASON=2026` in `.env`,
-   after which the weekly ingest re-pulls the season as a dated snapshot and
-   the freshness check applies.
+1. **Turn on the weekly live run.** The season in progress is loaded with its
+   weather: 25 clubs, 281 played, 94 to play, a forecast on every one of them.
+   What is left is a machine that runs on Tuesdays with `USL_CURRENT_SEASON=2026`
+   in `.env`: the weekly ingest then re-pulls the season as a dated snapshot,
+   the weather stage tops up last week's observations and refreshes the
+   forecasts, and the freshness check applies. Either scheduler below does it.
 2. **A second attendance source for 2021 to 2023.** The provider carries no gate
    for those seasons. The pipeline trains on what has one, and the hole is
    documented in the results; a second source joined on season, date and club

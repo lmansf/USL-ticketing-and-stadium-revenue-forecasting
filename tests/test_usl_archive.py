@@ -166,7 +166,7 @@ def test_lag_history_does_not_cross_the_empty_seasons(usl: duckdb.DuckDBPyConnec
 def test_weather_for_every_usl_ground_is_archived(
     usl: duckdb.DuckDBPyConnection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The refresh serves every USL club-day from the archive: no request, nothing missing.
+    """The refresh serves every USL club-day from the archived files: no request, nothing missing.
 
     Runs last in the module on purpose: it repopulates raw_weather and rebuilds
     staging on the shared connection.
@@ -179,7 +179,8 @@ def test_weather_for_every_usl_ground_is_archived(
     monkeypatch.setattr(open_meteo, "_request", no_network)
     monkeypatch.setattr(config, "WEATHER_ENABLED", True)
     stats = refresh.refresh(usl, today=dt.date(2026, 9, 7))
-    assert stats.archive_requests == 53  # 52 clubs, Louisville twice (two grounds)
+    assert stats.archive_replayed == 53  # 52 clubs, Louisville twice (two grounds)
+    assert stats.archive_requests == 0
     assert stats.forecast_requests == 0
     assert stats.club_days_needed == 4194
     assert stats.club_days_missing == 0

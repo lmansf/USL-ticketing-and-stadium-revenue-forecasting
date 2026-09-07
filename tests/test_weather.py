@@ -341,6 +341,131 @@ def test_refresh_fetches_one_archive_range_per_club_and_joins_to_home_matches(
     assert again.archive_requests == 0 and len(sandbox.calls) == 4
 
 
+def test_a_rebuilt_database_is_served_from_the_archive_by_coverage(
+    sandbox: FakeRequest,
+    con: duckdb.DuckDBPyConnection,
+    tiny_season: pd.DataFrame,
+    tiny_clubs: pd.DataFrame,
+) -> None:
+    """Rebuilding the database from the archive makes no request: the files cover the dates.
+
+    The first refresh archives one range per club. The database is then
+    rebuilt (raw_weather empty again), and the refresh serves every club from
+    the archived file that covers its dates rather than asking for the exact
+    key it computed. force= is the way to re-request: it skips the replay.
+    """
+    sandbox.auto = True
+    grounds = distinct_grounds(tiny_clubs)
+    _season(con, tiny_season, tiny_clubs, stadiums=grounds)
+    first = refresh.refresh_played_matches(con, today=dt.date(2024, 4, 1))
+    assert first.archive_requests == 4 and first.archive_replayed == 0
+    archived = sorted(p.name for p in config.ARCHIVE_DIR.iterdir())
+    assert len(archived) == 4
+
+    _season(con, tiny_season, tiny_clubs, stadiums=grounds)  # raw_weather is empty again
+    assert con.execute("SELECT count(*) FROM raw_weather").fetchone() == (0,)
+    rebuilt = refresh.refresh_played_matches(con, today=dt.date(2024, 4, 1))
+    assert rebuilt.archive_replayed == 4 and rebuilt.archive_requests == 0
+    assert rebuilt.rows_archive == first.rows_archive == 15 + 8 + 1 + 1
+    assert sorted(rebuilt.files) == archived
+    assert len(sandbox.calls) == 4
+    sources = con.execute(
+        "SELECT DISTINCT weather_source, source_file FROM raw_weather ORDER BY 2"
+    ).fetchall()
+    assert [s for s, _ in sources] == ["archive"] * 4
+    assert [f for _, f in sources] == archived
+    needs = refresh.weather_needs(con)
+    assert (needs["weather_source"] == "archive").all()
+
+    forced = refresh.refresh_played_matches(con, today=dt.date(2024, 4, 1), force=True)
+    assert forced.archive_replayed == 0 and forced.archive_requests == 0  # nothing is missing
+    _season(con, tiny_season, tiny_clubs, stadiums=grounds)
+    forced = refresh.refresh_played_matches(con, today=dt.date(2024, 4, 1), force=True)
+    assert forced.archive_replayed == 0 and forced.archive_requests == 4
+    assert len(sandbox.calls) == 8
+
+
+def test_only_the_dates_no_archived_file_covers_are_requested(
+    sandbox: FakeRequest,
+    con: duckdb.DuckDBPyConnection,
+    tiny_season: pd.DataFrame,
+    tiny_clubs: pd.DataFrame,
+) -> None:
+    """A season archived in two pulls is served from both files, and only the gap is requested.
+
+    The archive holds each club's first home date from a pull made before the
+    03-16 round was played. A rebuild after that round wants 03-02 and 03-16
+    for club_a: the archived file covers 03-02, so the request is for 03-16
+    alone - not for the whole 03-02..03-16 range the exact key would name.
+    """
+    sandbox.auto = True
+    grounds = distinct_grounds(tiny_clubs)
+    _season(con, with_unplayed(tiny_season, ["m5", "m6"]), tiny_clubs, stadiums=grounds)
+    early = refresh.refresh_played_matches(con, today=dt.date(2024, 4, 1))
+    assert early.archive_requests == 4
+    assert [(p["start_date"], p["end_date"]) for _, p in sandbox.calls] == [
+        ("2024-03-02", "2024-03-02"),  # club_a
+        ("2024-03-09", "2024-03-09"),  # club_b
+        ("2024-03-02", "2024-03-02"),  # club_c
+        ("2024-03-09", "2024-03-09"),  # club_d
+    ]
+
+    _season(con, tiny_season, tiny_clubs, stadiums=grounds)  # rebuilt, 03-16 played
+    later = refresh.refresh_played_matches(con, today=dt.date(2024, 4, 1))
+    assert later.archive_replayed == 4
+    assert later.archive_requests == 2  # club_a and club_b were at home on 03-16
+    assert [(p["start_date"], p["end_date"]) for _, p in sandbox.calls[4:]] == [
+        ("2024-03-16", "2024-03-16"),
+        ("2024-03-16", "2024-03-16"),
+    ]
+    assert later.rows_archive == 4 + 2
+    needs = refresh.weather_needs(con)
+    assert (needs["weather_source"] == "archive").all()
+    assert sorted(p.name for p in config.ARCHIVE_DIR.iterdir()) == sorted(set(later.files))
+
+    # the next rebuild is served from all six files
+    _season(con, tiny_season, tiny_clubs, stadiums=grounds)
+    again = refresh.refresh_played_matches(con, today=dt.date(2024, 4, 1))
+    assert again.archive_replayed == 6 and again.archive_requests == 0
+    assert len(sandbox.calls) == 6
+
+
+def test_archived_observations_are_found_by_location_from_the_filenames(
+    sandbox: FakeRequest,
+) -> None:
+    """The filename is the key: coordinates rounded as requested, ranges sorted, junk ignored."""
+    sandbox.auto = True
+    assert open_meteo.archived_observations(40.0, -80.0) == []  # no archive directory yet
+    open_meteo.fetch_archive(40.0, -80.0, dt.date(2024, 3, 9), dt.date(2024, 3, 16))
+    open_meteo.fetch_archive(40.00001, -80.0, dt.date(2024, 3, 1), dt.date(2024, 3, 3))
+    open_meteo.fetch_archive(41.0, -80.0, dt.date(2024, 3, 1), dt.date(2024, 3, 3))
+    stem = "open-meteo-archive_end_date_{end}_latitude_40.0_longitude_-80.0_start_date_{start}"
+    junk = {
+        stem.format(end="2024-03-03", start="2024-02-01") + ".json": "",  # empty: unusable
+        stem.format(end="2024-03-03", start="2024-02-02") + ".json.bad": "{}",  # quarantined
+        stem.format(end="nonsense", start="2024-02-03") + ".json": "{}",  # not a key
+    }
+    for name, body in junk.items():
+        (config.ARCHIVE_DIR / name).write_text(body)
+
+    found = open_meteo.archived_observations(40.0, -80.00004)
+    assert [(f.start.isoformat(), f.end.isoformat()) for f in found] == [
+        ("2024-03-01", "2024-03-03"),
+        ("2024-03-09", "2024-03-16"),
+    ]
+    assert found[0].covers(dt.date(2024, 3, 3)) and not found[0].covers(dt.date(2024, 3, 4))
+    frame = open_meteo.read_observations(found[1])
+    assert len(frame) == 8 and set(frame["weather_source"]) == {"archive"}
+    assert [f.name for f in open_meteo.archived_observations(41.0, -80.0)] == [
+        stem.format(end="2024-03-03", start="2024-03-01").replace("40.0_", "41.0_") + ".json"
+    ]
+
+    # a file changed on disk after it was archived is named, not served
+    found[0].path.write_text(json.dumps({"latitude": 40.0, "daily": {"time": "not a list"}}))
+    with pytest.raises(open_meteo.OpenMeteoError, match=found[0].name):
+        open_meteo.read_observations(found[0])
+
+
 def test_forecast_covers_upcoming_fixtures_and_is_replaced_by_the_observation(
     sandbox: FakeRequest,
     con: duckdb.DuckDBPyConnection,
@@ -400,15 +525,23 @@ def test_forecast_covers_upcoming_fixtures_and_is_replaced_by_the_observation(
         "29.0, 24.0, 0.0, 16.0, 50.0, TIMESTAMP '2024-03-12 06:00:00', 'snapshot')"
     )
     later = dt.date(2024, 4, 8)
+    # the 03-02 files for club_a and club_c are replayed from the archive; the
+    # requests are for what no file covers: club_a's 03-16, club_b's and
+    # club_d's whole ranges
     script(
         sandbox,
-        daily_body(dt.date(2024, 3, 2), 15, base_temp=10),  # club_a 03-02..03-16
+        daily_body(dt.date(2024, 3, 16), 1, base_temp=24),  # club_a 03-16
         daily_body(dt.date(2024, 3, 9), 8, base_temp=20),  # club_b 03-09..03-16
-        daily_body(dt.date(2024, 3, 2), 1, base_temp=30),  # club_c
         daily_body(dt.date(2024, 3, 9), 1, base_temp=40),  # club_d
     )
     stats = refresh.refresh_played_matches(con, today=later)
     refresh.fetch_upcoming(con, today=later, stats=stats)
+    assert stats.archive_replayed == 2 and stats.archive_requests == 3
+    assert [(p["start_date"], p["end_date"]) for _, p in sandbox.calls[4:]] == [
+        ("2024-03-16", "2024-03-16"),
+        ("2024-03-09", "2024-03-16"),
+        ("2024-03-09", "2024-03-09"),
+    ]
     assert stats.rows_upgraded == 2
     assert stats.forecast_requests == 0  # nothing unplayed inside the horizon
     row = con.execute(

@@ -30,7 +30,7 @@ season is the whole league, so ranking within conference and ranking league-wide
 coincide; the two-conference case is covered by `tests/test_standings.py` on a
 fixture.
 
-Every **USL Championship club-season from 2017 to 2025**: 264 rows in
+Every **USL Championship club-season from 2017 to 2026**: 289 rows in
 `club_conference.csv` across 52 clubs, the conference and display name of the
 year on each, the playoff line for every conference-season in
 `conference_structure.csv`, and a name row per club (current and former names) in
@@ -46,8 +46,8 @@ than ground truth:
   play, and `conference_membership_is_plausible` names a club filed under the
   wrong conference from its fixture list.
 - The provider's numeric club ids, the join key, were derived from the archive
-  by `scripts/propose_aliases.py` through the name rows: 51 USL ids, 46 matched
-  by name and 5 after a name row was added by hand. Every id the nine seasons
+  by `scripts/propose_aliases.py` through the name rows: 53 USL ids, 46 matched
+  by name and 7 after a name row was added by hand. Every id the ten seasons
   carry is mapped.
 - The lists were verified against the provider's own tables once the seasons
   were archived: club for club for 2017, 2019, 2021 and 2023; FC Tulsa moved to
@@ -59,8 +59,9 @@ than ground truth:
   was ranked against and the line it chased. 2020's eight COVID groups are
   approximated at the conference grain; the season sits inside the COVID window
   regardless.
-- 2026, the season in progress, is not filled in. Its field is settled by the
-  time the subscription starts; add the rows then.
+- 2026, the season in progress, is filled in from the fixture list, since the
+  provider's table carries no groups for a season under way: 13 East and 12
+  West, Lexington SC in the West as in 2025, and the rows say so in their notes.
 
 A conference-season with no fixture at all is reported by the checks and not
 failed, so the USL rows do not break the example-season run.

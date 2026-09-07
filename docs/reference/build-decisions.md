@@ -4,7 +4,7 @@ The guide leaves choices open on purpose and says, each time, "write it down".
 This is where they are written down. Every decision below names the phase or the
 open question it answers, what was chosen, and why. Where the choice was made
 because of the data actually available at build time - the free example season
-rather than nine seasons of USL - that is said too.
+rather than ten seasons of USL - that is said too.
 
 The companion list of questions is [open-questions.md](open-questions.md); this
 page is the answers.
@@ -374,6 +374,16 @@ D3 edits `club_aliases.csv` in place and restores it byte for byte.
   `usl.ingest.archive`: `.partial`, validate (JSON, no error envelope, a daily time
   series), atomic rename, `.bad` on failure. Observed weather is fetched once per
   club, ground and date range; a forecast is a dated snapshot per day it is made.
+- **A rebuilt database is served from the archive by coverage.** An observation
+  file is keyed by the range that was missing when it was fetched, so the exact
+  key a fresh database computes (one range per club across every season) was
+  never archived, and the first rebuild after the 2026 top-up went to the
+  network for weather the archive already held. The refresh now replays every
+  archived observation file whose range covers a date the club is missing,
+  reading the coordinates and the range off the filename, and requests only the
+  dates no file covers. Two counts in the run log say which happened,
+  `weather_archive_replayed` and `weather_archive_requests`; `force=` skips the
+  replay so a file can be refreshed on purpose.
 - **What needs weather is decided from staging**, so the staging tier is rebuilt
   at the start of the weather stage. Needs join `stadiums.csv` on the club and the
   validity range covering the match date (exercise 12.1). One archive request per
@@ -410,12 +420,12 @@ D3 edits `club_aliases.csv` in place and restores it byte for byte.
 
 ## The subscription month
 
-- **Seasons in scope: USL Championship 2017 to 2025**, ids from `league-list` on
-  day one and recorded in `usl/ref/seasons.csv`. 2026 is the season in progress;
-  its id is in the file's note and it is added once its conference rows exist,
-  then `USL_CURRENT_SEASON=2026` makes the weekly ingest pull it as a dated
-  snapshot. 2013 to 2016 exist at FootyStats and are out of scope until someone
-  writes their conference rows.
+- **Seasons in scope: USL Championship 2017 to 2026**, ids from `league-list` on
+  day one and recorded in `usl/ref/seasons.csv`. 2026 is the season in progress:
+  its conference rows were derived from the fixture list, it is archived to the
+  day it was pulled, and `USL_CURRENT_SEASON=2026` on the machine that runs the
+  weekly job makes the ingest re-pull it as a dated snapshot. 2013 to 2016 exist
+  at FootyStats and are out of scope until someone writes their conference rows.
 - **The example season moved to `seasons.example.csv`.** One database holds one
   league, so the EPL row left `seasons.csv`; `USL_SEASONS_CSV` points the pipeline
   at the example file, and the tests and demos set it, along with no key and no
@@ -464,26 +474,38 @@ D3 edits `club_aliases.csv` in place and restores it byte for byte.
   hole, which the allowed-null list already covers.
 - **The standings are verified, not assumed.** `scripts/verify_standings.py`
   compares every club-season with the provider's published tables two ways, and
-  on the nine seasons all 264 totals and all 181 regular-season group rows agree.
+  on the ten seasons all 289 totals and all 181 regular-season group rows agree.
   The same comparison runs in `tests/test_usl_archive.py`, so a reference-file
   edit that moves a table is caught.
 - **What the USL runs showed.** Both XGBoost models beat the naive club mean by
-  about 400 attendees on the holdout and on every expanding-window fold. The
-  A-to-B gap is inside the noise, and the two runs prove it between them: without
-  weather Model B won all four folds by 8 to 28; with the five weather columns in,
-  Model A wins all four by 8 to 52, and the holdout gap is one attendee against
-  seed spreads of 38 and 65. Five shared columns flipped the direction. Only 69 of
-  2,061 gated regular-season home matches were played after mathematical
-  elimination, because eight of twelve qualify, so the decay curve has nothing to
-  draw; that absence is the thesis. The README carries the figures.
-- **Weather for every USL ground is archived.** 53 responses for 52 clubs
-  (Louisville City twice, two grounds), 88,732 club-days, fetched in one run that
-  waited out the per-minute limit five times; every one of the 4,194 home
-  fixtures reads an observation and the archive-only run makes no request. On
-  nine seasons the weather family stays minor: no weather column reaches the top
-  ten by gain in either model, and the holdout MAE moved by four attendees in
-  each direction. Rain on a match day is a real effect; it is a small one next to
-  who is playing and what they drew last time.
+  about 550 attendees on the holdout and on every expanding-window fold. The
+  A-to-B gap is inside the noise, and the runs prove it between them: on nine
+  seasons without weather Model B won all four folds by 8 to 28; with the five
+  weather columns in, Model A won all four by 8 to 52; on ten seasons Model B is
+  six attendees better on the holdout against seed spreads of 16 and 24 while
+  Model A wins all five folds by 5 to 52. The direction flips with the columns
+  and the rows, which is what a gap inside the noise does. Only 69 of 2,300 gated
+  regular-season home matches were played after mathematical elimination,
+  because eight of twelve qualify, so the decay curve has nothing to draw; that
+  absence is the thesis. The README carries the figures.
+- **A gate of 8 is left in, and named.** Four of 2,386 recorded gates are under
+  100 (50, 18, 2 and 8), provider errors on their face; New Mexico United v
+  Orange County SC on 13 June 2026 is the 8, against a club mean above 9,000.
+  One such row in the holdout lifts MAPE from 28 percent to over 200 and moves
+  MAE by 15 attendees, so the README reads MAE and says why. A minimum plausible
+  gate would be a modelling decision with a config constant, a check that names
+  the rows and a test; it is not made here because it is the kind of choice the
+  guide says to write down first.
+- **Weather for every USL ground is archived, 2026 included.** 78 observation
+  responses for 52 clubs and their grounds - 53 from the first backfill, which
+  waited out the per-minute limit five times, and 25 for the 2026 top-up -
+  92,826 observed club-days, and the forecast snapshot of 7 September for the
+  fortnight ahead. Every one of the 4,463 played home fixtures older than the
+  archive lag reads an observation, the 27 inside the horizon read the snapshot,
+  and the archive-only run makes no request. On ten seasons the weather family
+  stays minor: no weather column reaches the top ten by gain in either model.
+  Rain on a match day is a real effect; it is a small one next to who is playing
+  and what they drew last time.
 - **2026, the season in progress, is in.** The provider's table carries no
   conference groups for a season under way, so the 2026 lists were derived from
   the fixture list the way `conference_membership_is_plausible` reads it: every
