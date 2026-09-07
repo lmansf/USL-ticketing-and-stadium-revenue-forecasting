@@ -340,3 +340,42 @@ def test_archive_command_flags_a_quarantined_response(
     out = capsys.readouterr().out
     assert "QUARANTINED: 1 .bad file(s)" in out
     assert "files:      0" in out
+
+
+def test_league_list_filter_narrows_the_table(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The full list is thousands of rows; --filter keeps the ones you are looking for."""
+    import json
+
+    sandbox = tmp_path / "raw_archive"
+    sandbox.mkdir()
+    payload = {
+        "success": True,
+        "data": [
+            {
+                "name": "USA USL Championship",
+                "league_name": "USL Championship",
+                "country": "USA",
+                "season": [{"id": 9001, "year": 2024}, {"id": 9002, "year": 2025}],
+            },
+            {
+                "name": "England Premier League",
+                "league_name": "Premier League",
+                "country": "England",
+                "season": [{"id": 1625, "year": 2018}],
+            },
+        ],
+    }
+    (sandbox / "league-list.json").write_text(json.dumps(payload))
+    monkeypatch.setattr(config, "ARCHIVE_DIR", sandbox)
+    monkeypatch.setattr(config, "FOOTYSTATS_API_KEY", "")  # served from the archive
+
+    assert main(["league-list", "--filter", "usl"]) == EXIT_OK
+    out = capsys.readouterr().out
+    assert "9001" in out and "9002" in out
+    assert "Premier League" not in out
+    assert "2 league-season row(s)" in out
+
+    assert main(["league-list", "--filter", "no such league"]) == EXIT_OK
+    assert "no league-season matches" in capsys.readouterr().out

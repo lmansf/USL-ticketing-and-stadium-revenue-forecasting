@@ -499,6 +499,19 @@ def cmd_league_list(args: argparse.Namespace, ctx: RunContext) -> int:
     """
     try:
         leagues = list_leagues(force=args.force)
+    if args.filter:
+        needle = args.filter.strip().lower()
+        text = leagues[["name", "league_name", "country"]].astype(str).apply(
+            lambda col: col.str.lower()
+        )
+        leagues = leagues[text.apply(lambda col: col.str.contains(needle, regex=False)).any(axis=1)]
+        if leagues.empty:
+            print(
+                f"league-list: no league-season matches {args.filter!r}. The list is every "
+                "league the key can see; a league absent from it is not selected on the "
+                "FootyStats account, or is named differently - try a shorter filter."
+            )
+            return EXIT_OK
     except NoSubscriptionError as exc:
         print(f"league-list needs a key: {exc}", file=sys.stderr)
         return EXIT_FAILED
@@ -593,6 +606,14 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "train: comma-separated seeds for the variance estimate; the first is the "
             f"primary (default: {','.join(str(s) for s in config.VARIANCE_SEEDS)})."
+        ),
+    )
+    parser.add_argument(
+        "--filter",
+        default=None,
+        help=(
+            "league-list: only print league-seasons whose name, league_name or country "
+            "contains this text (case-insensitive), e.g. --filter usl."
         ),
     )
     parser.add_argument(
